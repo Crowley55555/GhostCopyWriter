@@ -1,0 +1,5 @@
+Django>=4.2
+requests
+python-dotenv
+langchain-gigachat>=0.3.11
+langchain-core

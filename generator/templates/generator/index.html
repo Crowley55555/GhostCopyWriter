@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Ghostwriter AI</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <h1>Генератор постов</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Сгенерировать</button>
+    </form>
+
+    {% if result %}
+        <h2>Результат:</h2>
+        {% if limit_reached %}
+            <p>{{ result }}</p>
+        {% else %}
+            <textarea id="result" readonly>{{ result }}</textarea><br>
+            <button onclick="copyText()">Скопировать</button>
+            <button onclick="document.forms[0].submit()">Сгенерировать ещё</button>
+            <script>
+                function copyText() {
+                    const text = document.getElementById("result");
+                    navigator.clipboard.writeText(text.value).then(() => alert("Скопировано!"));
+                }
+            </script>
+            {% if image_url %}
+                <h3>Сгенерированная иллюстрация:</h3>
+                <img src="{{ image_url }}" alt="AI image" width="400" />
+            {% endif %}
+        {% endif %}
+    {% endif %}
+</body>
+</html>
