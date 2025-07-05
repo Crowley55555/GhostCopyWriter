@@ -628,6 +628,20 @@ html[data-theme="dark"] .btn-theme-toggle:hover {
     box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
 }
 
+.btn-outline-warning {
+    border: 2px solid var(--neon-orange);
+    color: var(--neon-orange);
+    background: transparent;
+    animation: fadeInUp 0.6s ease-out 0.9s both;
+}
+
+.btn-outline-warning:hover {
+    background: var(--neon-orange);
+    border-color: var(--neon-orange);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 0 20px rgba(255, 107, 53, 0.5);
+}
+
 /* Изображения */
 .image-container {
     position: relative;

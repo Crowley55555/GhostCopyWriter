@@ -133,12 +133,12 @@
                                 </div>
                                 <div class="card-body p-4">
                                     <div id="result" class="auto-resize-textarea" contenteditable="false"></div>
-                                    <div class="mt-3 d-flex gap-2">
+                                    <div class="mt-3 d-flex gap-2 flex-wrap">
                                         <button onclick="copyText()" class="btn btn-outline-primary">
                                             <i class="bi bi-clipboard me-2"></i>Скопировать
                                         </button>
-                                        <button onclick="handleRegenerateClick(event)" class="btn btn-outline-secondary">
-                                            <i class="bi bi-arrow-clockwise me-2"></i>Сгенерировать ещё
+                                        <button onclick="handleRegenerateTextClick(event)" class="btn btn-outline-warning">
+                                            <i class="bi bi-arrow-clockwise me-2"></i>Перегенерировать текст
                                         </button>
                                     </div>
                                 </div>
@@ -271,12 +271,15 @@
                                         
                                         <div id="imageError" class="alert alert-danger mt-3" style="display: none;"></div>
                                         
-                                        <div class="mt-3 d-flex gap-2 justify-content-center">
+                                        <div class="mt-3 d-flex gap-2 justify-content-center flex-wrap">
                                             <button onclick="openModal('{{ image_url }}')" class="btn btn-outline-info">
                                                 <i class="bi bi-zoom-in me-2"></i>Увеличить
                                             </button>
                                             <button onclick="downloadImage('{{ image_url }}')" class="btn btn-outline-success">
                                                 <i class="bi bi-download me-2"></i>Сохранить
+                                            </button>
+                                            <button onclick="handleRegenerateImageClick(event)" class="btn btn-outline-warning">
+                                                <i class="bi bi-image me-2"></i>Перегенерировать изображение
                                             </button>
                                         </div>
                                     </div>
@@ -677,6 +680,9 @@
                                 <button onclick="downloadImage('${data.image_url}')" class="btn btn-outline-success">
                                     <i class="bi bi-download me-2"></i>Сохранить
                                 </button>
+                                <button onclick="handleRegenerateImageClick(event)" class="btn btn-outline-warning">
+                                    <i class="bi bi-image me-2"></i>Перегенерировать изображение
+                                </button>
                             </div>
                         `;
                     };
@@ -727,6 +733,169 @@
             
             // Отправляем AJAX запрос
             sendGenerateRequest();
+        }
+
+        // Обработчик клика по кнопке "Перегенерировать текст"
+        function handleRegenerateTextClick(event) {
+            // Отключаем кнопку
+            const regenerateBtn = event.target;
+            regenerateBtn.classList.add('btn-loading');
+            regenerateBtn.disabled = true;
+            regenerateBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-2 icon-loading"></i>Генерация текста...';
+            
+            // Показываем уведомление
+            showToast('Перегенерируем текст...', 'info');
+            
+            // Получаем данные формы
+            const formData = new FormData();
+            formData.append('platform', document.getElementById('id_platform').value);
+            formData.append('template_type', document.getElementById('id_template_type').value);
+            formData.append('tone', document.getElementById('id_tone').value);
+            formData.append('topic', document.getElementById('id_topic').value);
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            // Отправляем AJAX запрос для перегенерации текста
+            fetch('/regenerate-text/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Обновляем текст
+                    const resultElement = document.getElementById('result');
+                    if (resultElement) {
+                        resultElement.textContent = data.result;
+                        autoResizeTextarea();
+                    }
+                    
+                    // Обновляем статистику
+                    const charCount = document.getElementById('charCount');
+                    const wordCount = document.getElementById('wordCount');
+                    if (charCount) charCount.textContent = data.result.length;
+                    if (wordCount) wordCount.textContent = data.result.split(' ').length;
+                    
+                    showToast('Текст успешно перегенерирован!', 'success');
+                } else {
+                    showToast('Ошибка при перегенерации текста: ' + (data.error || 'Неизвестная ошибка'), 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка при перегенерации текста:', error);
+                showToast('Ошибка при перегенерации текста', 'danger');
+            })
+            .finally(() => {
+                // Восстанавливаем кнопку
+                regenerateBtn.classList.remove('btn-loading');
+                regenerateBtn.disabled = false;
+                regenerateBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-2"></i>Перегенерировать текст';
+            });
+        }
+
+        // Обработчик клика по кнопке "Перегенерировать изображение"
+        function handleRegenerateImageClick(event) {
+            // Отключаем кнопку
+            const regenerateBtn = event.target;
+            regenerateBtn.classList.add('btn-loading');
+            regenerateBtn.disabled = true;
+            regenerateBtn.innerHTML = '<i class="bi bi-image me-2 icon-loading"></i>Генерация изображения...';
+            
+            // Показываем уведомление
+            showToast('Перегенерируем изображение...', 'info');
+            
+            // Получаем тему из формы
+            const topic = document.getElementById('id_topic').value;
+            
+            // Получаем данные формы
+            const formData = new FormData();
+            formData.append('topic', topic);
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            // Отправляем AJAX запрос для перегенерации изображения
+            fetch('/regenerate-image/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Обновляем изображение
+                    const imageContainer = document.getElementById('imageContainer');
+                    if (imageContainer && data.image_url) {
+                        // Показываем состояние загрузки
+                        imageContainer.innerHTML = `
+                            <div class="image-loading">
+                                <i class="bi bi-image"></i>
+                                <p>Загружаем новое изображение...</p>
+                            </div>
+                        `;
+                        
+                        // Создаем изображение для предзагрузки
+                        const img = new Image();
+                        img.onload = function() {
+                            imageContainer.innerHTML = `
+                                <div class="image-container position-relative">
+                                    <img src="${data.image_url}" alt="AI generated image" 
+                                         class="generated-image" 
+                                         onclick="openModal(this.src)" 
+                                         onerror="handleImageError(this)" 
+                                         onload="handleImageLoad(this)" />
+                                    
+                                    <!-- Overlay для увеличения -->
+                                    <div class="image-overlay" onclick="openModal('${data.image_url}')">
+                                        <i class="bi bi-zoom-in text-white fs-1"></i>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-3 d-flex gap-2 justify-content-center flex-wrap">
+                                    <button onclick="openModal('${data.image_url}')" class="btn btn-outline-info">
+                                        <i class="bi bi-zoom-in me-2"></i>Увеличить
+                                    </button>
+                                    <button onclick="downloadImage('${data.image_url}')" class="btn btn-outline-success">
+                                        <i class="bi bi-download me-2"></i>Сохранить
+                                    </button>
+                                    <button onclick="handleRegenerateImageClick(event)" class="btn btn-outline-warning">
+                                        <i class="bi bi-image me-2"></i>Перегенерировать изображение
+                                    </button>
+                                </div>
+                            `;
+                        };
+                        img.onerror = function() {
+                            imageContainer.innerHTML = `
+                                <div class="image-error">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    <p>Ошибка загрузки изображения</p>
+                                </div>
+                            `;
+                        };
+                        img.src = data.image_url;
+                    }
+                    
+                    // Обновляем статистику
+                    const imageCount = document.getElementById('imageCount');
+                    if (imageCount) imageCount.textContent = '1';
+                    
+                    showToast('Изображение успешно перегенерировано!', 'success');
+                } else {
+                    showToast('Ошибка при перегенерации изображения: ' + (data.error || 'Неизвестная ошибка'), 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка при перегенерации изображения:', error);
+                showToast('Ошибка при перегенерации изображения', 'danger');
+            })
+            .finally(() => {
+                // Восстанавливаем кнопку
+                regenerateBtn.classList.remove('btn-loading');
+                regenerateBtn.disabled = false;
+                regenerateBtn.innerHTML = '<i class="bi bi-image me-2"></i>Перегенерировать изображение';
+            });
         }
 
         // Автоматическое подстраивание высоты текстового поля
