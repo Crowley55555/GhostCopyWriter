@@ -16,11 +16,6 @@ def index(request):
 
     form = GenerationForm(request.POST or None)
 
-    def get_first_sentence(text):
-        match = re.match(r'(.+?[.!?])(\
-|\s|$)', text.strip(), re.DOTALL)
-        return match.group(1) if match else text[:200]
-
     if request.method == 'POST' and form.is_valid():
         # count = request.session['generated_count']
         # if count >= 3:
@@ -29,15 +24,10 @@ def index(request):
         # else:
         # Генерация текста поста
         result = generate_text(form.cleaned_data)
-        # Генерация описания для картинки через GigaChat
-        image_prompt = generate_image_gigachat(form.cleaned_data['topic'])
-        print('GigaChat image prompt:', image_prompt)
-        # Используем только первое предложение для Яндекс
-        short_prompt = get_first_sentence(image_prompt)
-        print('Short prompt for Yandex:', short_prompt)
-        # Генерация картинки через Яндекс по короткому описанию
-        raw_image = generate_image_yandex(short_prompt)
-        print('Yandex image url:', raw_image)
+        
+        # Генерация изображения через GigaChat
+        image_data = generate_image_gigachat(form.cleaned_data['topic'])
+        print('GigaChat image data:', image_data[:100] if image_data else None)
 
         # Сохраняем в базу
         Generation.objects.create(
@@ -48,19 +38,59 @@ def index(request):
             result=result,
         )
 
-        # Сохраняем изображение, если есть
-        if raw_image:
-            if raw_image.startswith("http"):
-                image_url = raw_image
+        # Обрабатываем изображение
+        if image_data:
+            print(f"Тип image_data: {type(image_data)}")
+            print(f"Длина image_data: {len(image_data)}")
+            print(f"Первые 100 символов image_data: {image_data[:100]}")
+            
+            if image_data.startswith("data:image"):
+                # Это base64 данные от GigaChat - сохраняем локально
+                try:
+                    # Создаем уникальное имя файла
+                    import uuid
+                    filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
+                    full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                    os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                    
+                    # Извлекаем base64 данные
+                    base64_data = image_data.split(',')[1]
+                    image_bytes = base64.b64decode(base64_data)
+                    
+                    with open(full_path, "wb") as f:
+                        f.write(image_bytes)
+                    
+                    image_url = settings.MEDIA_URL + filename
+                    print(f"Изображение сохранено локально: {image_url}")
+                    print(f"Размер файла: {len(image_bytes)} байт")
+                    
+                except Exception as e:
+                    print(f"Ошибка при сохранении base64 изображения: {e}")
+                    # Возвращаемся к base64 как fallback
+                    image_url = image_data
+                    print("Используем base64 данные напрямую как fallback")
+            elif image_data.startswith("http"):
+                # Это URL (если вдруг вернется)
+                image_url = image_data
+                print("Используем URL изображения")
             else:
-                filename = f"{request.session.session_key[:8]}_{form.cleaned_data['topic'][:20].replace(' ', '_')}.png"
+                # Сохраняем локально, если это base64 без префикса
+                filename = f"{request.session.session_key[:8]}_{form.cleaned_data['topic'][:20].replace(' ', '_')}.jpg"
                 full_path = os.path.join(settings.MEDIA_ROOT, filename)
-                match = re.search(r'base64,(.*)', raw_image)
-                image_bytes = base64.b64decode(match.group(1)) if match else raw_image.encode()
                 os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-                with open(full_path, "wb") as f:
-                    f.write(image_bytes)
-                image_url = settings.MEDIA_URL + filename
+                
+                # Декодируем base64 и сохраняем
+                try:
+                    image_bytes = base64.b64decode(image_data)
+                    with open(full_path, "wb") as f:
+                        f.write(image_bytes)
+                    image_url = settings.MEDIA_URL + filename
+                    print(f"Изображение сохранено локально: {image_url}")
+                except Exception as e:
+                    print(f"Ошибка при сохранении изображения: {e}")
+                    image_url = None
+        else:
+            print("Нет данных изображения для обработки")
 
         # Увеличиваем счетчик
         # request.session['generated_count'] = count + 1

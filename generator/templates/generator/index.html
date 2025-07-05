@@ -4,34 +4,226 @@
     <meta charset="UTF-8">
     <title>Ghostwriter AI</title>
     <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .image-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .generated-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .generated-image:hover {
+            transform: scale(1.02);
+        }
+        
+        .image-actions {
+            margin-top: 10px;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 5px;
+            font-size: 14px;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        
+        /* Модальное окно */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+        }
+        
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .close {
+            position: absolute;
+            top: 15px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: #bbb;
+        }
+        
+        .debug-info {
+            font-size: 12px;
+            color: #666;
+            margin: 5px 0;
+        }
+    </style>
 </head>
 <body>
-    <h1>Генератор постов</h1>
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Сгенерировать</button>
-    </form>
+    <div class="container">
+        <h1>Генератор постов</h1>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Сгенерировать</button>
+        </form>
 
-    {% if result %}
-        <h2>Результат:</h2>
-        {% if limit_reached %}
-            <p>{{ result }}</p>
-        {% else %}
-            <textarea id="result" readonly>{{ result }}</textarea><br>
-            <button onclick="copyText()">Скопировать</button>
-            <button onclick="document.forms[0].submit()">Сгенерировать ещё</button>
-            <script>
-                function copyText() {
-                    const text = document.getElementById("result");
-                    navigator.clipboard.writeText(text.value).then(() => alert("Скопировано!"));
-                }
-            </script>
-            {% if image_url %}
-                <h3>Сгенерированная иллюстрация:</h3>
-                <img src="{{ image_url }}" alt="AI image" width="400" />
+        {% if result %}
+            <h2>Результат:</h2>
+            {% if limit_reached %}
+                <p>{{ result }}</p>
+            {% else %}
+                <textarea id="result" readonly>{{ result }}</textarea><br>
+                <button onclick="copyText()" class="btn">Скопировать</button>
+                <button onclick="document.forms[0].submit()" class="btn">Сгенерировать ещё</button>
+                <script>
+                    function copyText() {
+                        const text = document.getElementById("result");
+                        navigator.clipboard.writeText(text.value).then(() => alert("Скопировано!"));
+                    }
+                </script>
+                {% if image_url %}
+                    <div class="image-container">
+                        <h3>Сгенерированная иллюстрация:</h3>
+                        <div class="debug-info">Debug: image_url = {{ image_url|truncatechars:50 }}</div>
+                        <img src="{{ image_url }}" alt="AI image" class="generated-image" onclick="openModal(this.src)" 
+                             onerror="handleImageError(this)" onload="handleImageLoad(this)" />
+                        <div id="imageError" style="display: none; color: red; margin: 10px 0;"></div>
+                        <div class="image-actions">
+                            <button onclick="openModal('{{ image_url }}')" class="btn">Увеличить</button>
+                            <button onclick="downloadImage('{{ image_url }}')" class="btn btn-secondary">Сохранить</button>
+                        </div>
+                    </div>
+                {% else %}
+                    <p><small>Изображение не было сгенерировано</small></p>
+                {% endif %}
             {% endif %}
         {% endif %}
-    {% endif %}
+    </div>
+
+    <!-- Модальное окно для увеличенного изображения -->
+    <div id="imageModal" class="modal">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <img class="modal-content" id="modalImage">
+        <div style="text-align: center; margin-top: 10px;">
+            <button onclick="downloadImage(document.getElementById('modalImage').src)" class="btn">Сохранить изображение</button>
+        </div>
+    </div>
+
+    <script>
+        function openModal(imageSrc) {
+            const modal = document.getElementById("imageModal");
+            const modalImg = document.getElementById("modalImage");
+            modal.style.display = "block";
+            modalImg.src = imageSrc;
+        }
+
+        function closeModal() {
+            document.getElementById("imageModal").style.display = "none";
+        }
+
+        function downloadImage(imageSrc) {
+            const link = document.createElement('a');
+            link.href = imageSrc;
+            link.download = 'generated_image.jpg';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Закрытие модального окна при клике вне изображения
+        window.onclick = function(event) {
+            const modal = document.getElementById("imageModal");
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        // Закрытие модального окна по Escape
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        function handleImageError(image) {
+            const errorDiv = document.getElementById("imageError");
+            const imageUrl = image.src;
+            
+            console.log("Ошибка загрузки изображения:", imageUrl);
+            
+            // Проверяем, что это base64
+            if (imageUrl.startsWith('data:image')) {
+                // Проверяем длину base64
+                const base64Data = imageUrl.split(',')[1];
+                if (base64Data && base64Data.length > 1000) {
+                    errorDiv.textContent = "Изображение загружено, но не может быть отображено. Попробуйте сохранить файл.";
+                } else {
+                    errorDiv.textContent = "Неверный формат изображения. Данные повреждены.";
+                }
+            } else {
+                errorDiv.textContent = "Ошибка загрузки изображения. Пожалуйста, попробуйте позже.";
+            }
+            errorDiv.style.display = "block";
+        }
+
+        function handleImageLoad(image) {
+            const errorDiv = document.getElementById("imageError");
+            errorDiv.style.display = "none";
+            console.log("Изображение успешно загружено:", image.naturalWidth + "x" + image.naturalHeight);
+        }
+
+        function validateBase64(base64String) {
+            try {
+                const base64Data = base64String.split(',')[1];
+                if (!base64Data) return false;
+                
+                // Проверяем длину
+                if (base64Data.length < 1000) return false;
+                
+                // Проверяем, что это валидный base64
+                const decoded = atob(base64Data);
+                return decoded.length > 0;
+            } catch (e) {
+                console.error("Ошибка валидации base64:", e);
+                return false;
+            }
+        }
+    </script>
 </body>
 </html>
