@@ -126,3 +126,16 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# CSRF настройки для AJAX запросов
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+    'http://0.0.0.0:8000',
+    'http://127.0.0.1',
+    'http://localhost',
+]
+
+# Настройки для разработки
+CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_HTTPONLY = False

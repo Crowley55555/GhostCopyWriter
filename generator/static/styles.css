@@ -51,13 +51,13 @@ body[data-theme="dark"] {
     
     /* Цвета темной темы */
     --bg-primary: #0a0a0a;
-    --bg-secondary: #1a1a1a;
-    --bg-tertiary: #2a2a2a;
+    --bg-secondary: #2a2a2a;
+    --bg-tertiary: #3a3a3a;
     --text-primary: #ffffff;
     --text-secondary: #b0b0b0;
     --text-muted: #808080;
-    --border-color: #333333;
-    --card-bg: #1a1a1a;
+    --border-color: #404040;
+    --card-bg: #2a2a2a;
     --header-bg: rgba(10, 10, 10, 0.95);
     --navbar-bg: rgba(26, 26, 26, 0.95);
     
@@ -291,9 +291,79 @@ body {
 
 .header-controls {
     display: flex;
-    justify-content: flex-end;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
     animation: fadeInRight 1s ease-out 0.2s both;
+}
+
+.datetime-display {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    opacity: 0.9;
+    transition: var(--transition);
+    display: flex !important;
+    align-items: center;
+    gap: 0.25rem;
+    visibility: visible !important;
+    position: relative;
+    z-index: 1;
+}
+
+.datetime-display:hover {
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+/* Исправления для темной темы */
+html[data-theme="dark"] .datetime-display {
+    color: var(--text-primary) !important;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+html[data-theme="dark"] .datetime-display i {
+    color: var(--text-primary) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+html[data-theme="dark"] .datetime-display span {
+    color: var(--text-primary) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+/* Исправления для светлой темы */
+html[data-theme="light"] .datetime-display {
+    color: #ffffff !important;
+    opacity: 1 !important;
+    display: flex !important;
+    visibility: visible !important;
+    font-size: 0.9rem;
+    font-weight: 500;
+    position: relative !important;
+    z-index: 1 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+
+html[data-theme="light"] .datetime-display i {
+    color: #ffffff !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+
+html[data-theme="light"] .datetime-display span {
+    color: #ffffff !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
 }
 
 .btn-theme-toggle {
@@ -742,6 +812,18 @@ html[data-theme="dark"] .btn-theme-toggle:hover {
         margin-left: 0;
         font-size: 0.8rem;
     }
+    
+    .header-controls {
+        align-items: center;
+        text-align: center;
+    }
+    
+    .datetime-display {
+        font-size: 0.8rem;
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
 }
 
 @media (max-width: 576px) {
@@ -1041,6 +1123,22 @@ html[data-theme="dark"] footer {
     color: var(--text-primary);
 }
 
+html[data-theme="dark"] .header-controls {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-end !important;
+    gap: 0.5rem !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+html[data-theme="dark"] .header-controls .datetime-display {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: var(--text-primary) !important;
+}
+
 /* Исправления для светлой темы */
 html[data-theme="light"] body {
     background: var(--primary-gradient);
@@ -1067,6 +1165,42 @@ html[data-theme="light"] .text-muted {
 
 html[data-theme="light"] .lead {
     color: var(--text-secondary) !important;
+}
+
+html[data-theme="light"] .header-controls {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-end !important;
+    gap: 0.5rem !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+html[data-theme="light"] .header-controls .datetime-display {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #ffffff !important;
+    font-size: 0.9rem !important;
+    font-weight: 500 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+
+html[data-theme="light"] .datetime-display i {
+    color: #ffffff !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}
+
+html[data-theme="light"] .datetime-display span {
+    color: #ffffff !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
 }
 
 /* Анимации для заголовков */

@@ -28,7 +28,15 @@
                 </div>
                 <div class="col-md-6 text-end">
                     <div class="header-controls">
-                        <button id="themeToggle" class="btn btn-theme-toggle" onclick="toggleTheme()">
+                        <div class="datetime-display mb-2">
+                            <i class="bi bi-calendar3 me-1"></i>
+                            <span id="currentDate"></span>
+                        </div>
+                        <div class="datetime-display">
+                            <i class="bi bi-clock me-1"></i>
+                            <span id="currentTime"></span>
+                        </div>
+                        <button id="themeToggle" class="btn btn-theme-toggle mt-2" onclick="toggleTheme()">
                             <i class="bi bi-sun-fill" id="themeIcon"></i>
                             <span id="themeText">Темная тема</span>
                         </button>
@@ -71,7 +79,7 @@
                         </h5>
                     </div>
                     <div class="card-body p-4">
-                        <form method="post" class="needs-validation" novalidate>
+                        <form method="post" class="needs-validation" novalidate id="generateForm">
                             {% csrf_token %}
                             <div class="row g-4">
                                 <div class="col-md-4">
@@ -102,8 +110,9 @@
                                     </div>
                                 </div>
                                 <div class="col-12 text-center">
-                                    <button type="submit" class="btn btn-primary btn-lg px-5">
-                                        <i class="bi bi-wand-magic-sparkles me-2"></i>Сгенерировать контент
+                                    <button type="button" id="generateBtn" class="btn btn-primary btn-lg px-5" onclick="handleGenerateClick(event)">
+                                        <i class="bi bi-wand-magic-sparkles me-2" id="generateIcon"></i>
+                                        <span id="generateText">Сгенерировать контент</span>
                                     </button>
                                 </div>
                             </div>
@@ -112,6 +121,95 @@
                 </div>
 
                 <!-- Результат -->
+                <div id="resultsContainer" style="display: none;">
+                    <div class="row g-4">
+                        <!-- Текстовый результат -->
+                        <div class="col-lg-6">
+                            <div class="card shadow-lg border-0 h-100">
+                                <div class="card-header bg-success bg-gradient text-white">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-file-text me-2"></i>Сгенерированный пост
+                                    </h5>
+                                </div>
+                                <div class="card-body p-4">
+                                    <div id="result" class="auto-resize-textarea" contenteditable="false"></div>
+                                    <div class="mt-3 d-flex gap-2">
+                                        <button onclick="copyText()" class="btn btn-outline-primary">
+                                            <i class="bi bi-clipboard me-2"></i>Скопировать
+                                        </button>
+                                        <button onclick="handleRegenerateClick(event)" class="btn btn-outline-secondary">
+                                            <i class="bi bi-arrow-clockwise me-2"></i>Сгенерировать ещё
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Изображение -->
+                        <div class="col-lg-6">
+                            <div class="card shadow-lg border-0 h-100">
+                                <div class="card-header bg-info bg-gradient text-white">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-image me-2"></i>Сгенерированная иллюстрация
+                                    </h5>
+                                </div>
+                                <div class="card-body p-4 text-center">
+                                    <div id="imageContainer">
+                                        <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
+                                        <p class="text-muted mt-3">Изображение будет сгенерировано автоматически</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Статистика -->
+                    <div class="row mt-5">
+                        <div class="col-12">
+                            <div class="card shadow-lg border-0">
+                                <div class="card-header bg-dark bg-gradient text-white">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-graph-up me-2"></i>Статистика генерации
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row text-center">
+                                        <div class="col-md-3">
+                                            <div class="stat-item">
+                                                <i class="bi bi-calendar-check text-primary fs-1"></i>
+                                                <h4 class="mt-2" id="charCount">0</h4>
+                                                <p class="text-muted">Символов в тексте</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="stat-item">
+                                                <i class="bi bi-clock text-success fs-1"></i>
+                                                <h4 class="mt-2" id="wordCount">0</h4>
+                                                <p class="text-muted">Слов в тексте</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="stat-item">
+                                                <i class="bi bi-image text-info fs-1"></i>
+                                                <h4 class="mt-2" id="imageCount">0</h4>
+                                                <p class="text-muted">Изображений</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="stat-item">
+                                                <i class="bi bi-lightning text-warning fs-1"></i>
+                                                <h4 class="mt-2">AI</h4>
+                                                <p class="text-muted">Powered by GigaChat</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Результат (старый способ для совместимости) -->
                 {% if result %}
                     <div class="row g-4">
                         <!-- Текстовый результат -->
@@ -128,12 +226,12 @@
                                             <i class="bi bi-exclamation-triangle me-2"></i>{{ result }}
                                         </div>
                                     {% else %}
-                                        <textarea id="result" readonly class="form-control border-0 bg-light">{{ result }}</textarea>
+                                        <div id="result" class="auto-resize-textarea" contenteditable="false">{{ result }}</div>
                                         <div class="mt-3 d-flex gap-2">
                                             <button onclick="copyText()" class="btn btn-outline-primary">
                                                 <i class="bi bi-clipboard me-2"></i>Скопировать
                                             </button>
-                                            <button onclick="document.forms[0].submit()" class="btn btn-outline-secondary">
+                                            <button onclick="handleRegenerateClick(event)" class="btn btn-outline-secondary">
                                                 <i class="bi bi-arrow-clockwise me-2"></i>Сгенерировать ещё
                                             </button>
                                         </div>
@@ -310,6 +408,43 @@
                 localStorage.setItem('theme', 'dark');
                 console.log('Переключено на темную тему');
             }
+            
+            // Обновляем дату и время после переключения темы
+            updateDateTime();
+            
+            // Принудительно показываем элементы datetime-display
+            setTimeout(() => {
+                const datetimeDisplays = document.querySelectorAll('.datetime-display');
+                datetimeDisplays.forEach(display => {
+                    display.style.display = 'flex';
+                    display.style.visibility = 'visible';
+                    display.style.opacity = '1';
+                    
+                    // Принудительно обновляем стили для видимости
+                    const currentTheme = html.getAttribute('data-theme');
+                    if (currentTheme === 'light') {
+                        display.style.color = '#ffffff';
+                        display.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.3)';
+                        
+                        // Обновляем стили для иконок
+                        const icons = display.querySelectorAll('i');
+                        icons.forEach(icon => {
+                            icon.style.color = '#ffffff';
+                            icon.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.3)';
+                        });
+                    } else {
+                        display.style.color = 'var(--text-primary)';
+                        display.style.textShadow = 'none';
+                        
+                        // Обновляем стили для иконок
+                        const icons = display.querySelectorAll('i');
+                        icons.forEach(icon => {
+                            icon.style.color = 'var(--text-primary)';
+                            icon.style.textShadow = 'none';
+                        });
+                    }
+                });
+            }, 100);
         }
 
         // Загрузка сохраненной темы
@@ -330,6 +465,301 @@
                 if (themeIcon) themeIcon.className = 'bi bi-sun-fill';
                 if (themeText) themeText.textContent = 'Темная тема';
             }
+            
+            // Обновляем дату и время после загрузки темы
+            updateDateTime();
+            
+            // Принудительно показываем элементы datetime-display
+            setTimeout(() => {
+                const datetimeDisplays = document.querySelectorAll('.datetime-display');
+                datetimeDisplays.forEach(display => {
+                    display.style.display = 'flex';
+                    display.style.visibility = 'visible';
+                    display.style.opacity = '1';
+                    
+                    // Принудительно обновляем стили для видимости
+                    if (savedTheme === 'light') {
+                        display.style.color = '#ffffff';
+                        display.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.3)';
+                        
+                        // Обновляем стили для иконок
+                        const icons = display.querySelectorAll('i');
+                        icons.forEach(icon => {
+                            icon.style.color = '#ffffff';
+                            icon.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.3)';
+                        });
+                    } else {
+                        display.style.color = 'var(--text-primary)';
+                        display.style.textShadow = 'none';
+                        
+                        // Обновляем стили для иконок
+                        const icons = display.querySelectorAll('i');
+                        icons.forEach(icon => {
+                            icon.style.color = 'var(--text-primary)';
+                            icon.style.textShadow = 'none';
+                        });
+                    }
+                });
+            }, 100);
+        }
+
+        // Функция для управления состоянием кнопки генерации
+        function setGenerateButtonLoading(isLoading) {
+            const generateBtn = document.getElementById('generateBtn');
+            const generateIcon = document.getElementById('generateIcon');
+            const generateText = document.getElementById('generateText');
+            
+            if (isLoading) {
+                // Отключаем кнопку и показываем состояние загрузки
+                generateBtn.classList.add('btn-loading');
+                generateIcon.className = 'bi bi-arrow-clockwise me-2 icon-loading';
+                generateText.textContent = 'Генерация...';
+                generateBtn.disabled = true;
+            } else {
+                // Включаем кнопку и возвращаем исходное состояние
+                generateBtn.classList.remove('btn-loading');
+                generateIcon.className = 'bi bi-wand-magic-sparkles me-2';
+                generateText.textContent = 'Сгенерировать контент';
+                generateBtn.disabled = false;
+            }
+        }
+
+        // Обработчик клика по кнопке генерации
+        function handleGenerateClick(event) {
+            // Проверяем, что форма валидна
+            const form = document.getElementById('generateForm');
+            if (form && form.checkValidity()) {
+                // Отключаем кнопку
+                setGenerateButtonLoading(true);
+                
+                // Показываем уведомление о начале генерации
+                showToast('Начинаем генерацию контента...', 'info');
+                
+                // Скрываем старые результаты
+                const resultsContainer = document.getElementById('resultsContainer');
+                if (resultsContainer) {
+                    resultsContainer.style.display = 'none';
+                }
+                
+                // Отправляем AJAX запрос
+                sendGenerateRequest();
+            } else {
+                // Если форма не валидна, показываем ошибку
+                showToast('Пожалуйста, заполните все обязательные поля', 'warning');
+                event.preventDefault();
+            }
+        }
+
+        // Функция для получения CSRF токена
+        function getCSRFToken() {
+            const token = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (token) {
+                return token.value;
+            }
+            // Если токен не найден в форме, получаем из cookie
+            const name = 'csrftoken';
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // Отправка AJAX запроса для генерации
+        function sendGenerateRequest() {
+            const form = document.getElementById('generateForm');
+            const formData = new FormData(form);
+            
+            // Получаем CSRF токен
+            const csrfToken = getCSRFToken();
+            
+            // Показываем прогресс
+            showProgress('Начинаем генерацию текста...');
+            
+            fetch('', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': csrfToken
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // Показываем результаты
+                    displayResults(data);
+                    showToast('Контент успешно сгенерирован!', 'success');
+                } else {
+                    // Показываем ошибку
+                    showToast(data.error || 'Ошибка генерации контента', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
+                showToast('Произошла ошибка при генерации контента', 'danger');
+            })
+            .finally(() => {
+                // Включаем кнопку обратно
+                setGenerateButtonLoading(false);
+            });
+        }
+
+        // Показ прогресса генерации
+        function showProgress(message) {
+            showToast(message, 'info');
+        }
+
+        // Отображение результатов
+        function displayResults(data) {
+            const resultsContainer = document.getElementById('resultsContainer');
+            const resultText = document.getElementById('result');
+            const imageContainer = document.getElementById('imageContainer');
+            const charCount = document.getElementById('charCount');
+            const wordCount = document.getElementById('wordCount');
+            const imageCount = document.getElementById('imageCount');
+            
+            if (resultsContainer && resultText) {
+                // Показываем контейнер результатов
+                resultsContainer.style.display = 'block';
+                
+                // Обновляем текст
+                resultText.textContent = data.result || '';
+                
+                // Обновляем статистику
+                if (charCount) charCount.textContent = (data.result || '').length;
+                if (wordCount) wordCount.textContent = (data.result || '').split(' ').length;
+                if (imageCount) imageCount.textContent = data.image_url ? '1' : '0';
+                
+                // Обновляем изображение
+                if (data.image_url && imageContainer) {
+                    // Показываем состояние загрузки
+                    imageContainer.innerHTML = `
+                        <div class="image-loading">
+                            <i class="bi bi-image"></i>
+                            <p>Загружаем изображение...</p>
+                        </div>
+                    `;
+                    
+                    // Создаем изображение для предзагрузки
+                    const img = new Image();
+                    img.onload = function() {
+                        imageContainer.innerHTML = `
+                            <div class="image-container position-relative">
+                                <img src="${data.image_url}" alt="AI generated image" 
+                                     class="generated-image" 
+                                     onclick="openModal(this.src)" 
+                                     onerror="handleImageError(this)" 
+                                     onload="handleImageLoad(this)" />
+                                
+                                <!-- Overlay для увеличения -->
+                                <div class="image-overlay" onclick="openModal('${data.image_url}')">
+                                    <i class="bi bi-zoom-in text-white fs-1"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-3 d-flex gap-2 justify-content-center flex-wrap">
+                                <button onclick="openModal('${data.image_url}')" class="btn btn-outline-info">
+                                    <i class="bi bi-zoom-in me-2"></i>Увеличить
+                                </button>
+                                <button onclick="downloadImage('${data.image_url}')" class="btn btn-outline-success">
+                                    <i class="bi bi-download me-2"></i>Сохранить
+                                </button>
+                            </div>
+                        `;
+                    };
+                    img.onerror = function() {
+                        imageContainer.innerHTML = `
+                            <div class="image-error">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <p>Ошибка загрузки изображения</p>
+                            </div>
+                        `;
+                    };
+                    img.src = data.image_url;
+                } else if (imageContainer) {
+                    // Если изображение не сгенерировано
+                    imageContainer.innerHTML = `
+                        <div class="image-error">
+                            <i class="bi bi-image"></i>
+                            <p>Изображение не было сгенерировано</p>
+                        </div>
+                    `;
+                }
+                
+                // Подстраиваем высоту текстового поля
+                autoResizeTextarea();
+                
+                // Плавная анимация появления
+                resultsContainer.style.opacity = '0';
+                resultsContainer.style.transform = 'translateY(20px)';
+                resultsContainer.style.transition = 'all 0.5s ease';
+                
+                setTimeout(() => {
+                    resultsContainer.style.opacity = '1';
+                    resultsContainer.style.transform = 'translateY(0)';
+                }, 100);
+            }
+        }
+
+        // Обработчик клика по кнопке "Сгенерировать ещё"
+        function handleRegenerateClick(event) {
+            // Отключаем кнопку
+            const regenerateBtn = event.target;
+            regenerateBtn.classList.add('btn-loading');
+            regenerateBtn.disabled = true;
+            regenerateBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-2 icon-loading"></i>Генерация...';
+            
+            // Показываем уведомление
+            showToast('Генерируем новый контент...', 'info');
+            
+            // Отправляем AJAX запрос
+            sendGenerateRequest();
+        }
+
+        // Автоматическое подстраивание высоты текстового поля
+        function autoResizeTextarea() {
+            const textarea = document.getElementById('result');
+            if (textarea) {
+                // Создаем временный элемент для измерения высоты
+                const temp = document.createElement('div');
+                temp.style.cssText = `
+                    position: absolute;
+                    top: -9999px;
+                    left: -9999px;
+                    width: ${textarea.offsetWidth}px;
+                    padding: ${getComputedStyle(textarea).padding};
+                    font: ${getComputedStyle(textarea).font};
+                    line-height: ${getComputedStyle(textarea).lineHeight};
+                    word-wrap: break-word;
+                    white-space: pre-wrap;
+                    overflow: hidden;
+                `;
+                temp.textContent = textarea.textContent || textarea.innerText;
+                
+                document.body.appendChild(temp);
+                const height = temp.scrollHeight;
+                document.body.removeChild(temp);
+                
+                // Устанавливаем высоту с учетом минимальной и максимальной
+                const minHeight = 150;
+                const maxHeight = 600;
+                const newHeight = Math.max(minHeight, Math.min(maxHeight, height));
+                
+                textarea.style.height = newHeight + 'px';
+            }
         }
 
         // Инициализация при загрузке страницы - используем window.onload
@@ -346,12 +776,24 @@
             if (!themeToggle) {
                 console.error('Кнопка не найдена!');
             }
+            
+            // Принудительно обновляем дату и время сразу
+            console.log('Запускаем обновление даты и времени...');
+            updateDateTime();
+            
+            // Запускаем обновление даты и времени
+            startDateTimeUpdate();
+            
+            // Подстраиваем высоту текстового поля
+            autoResizeTextarea();
+            
+            console.log('Инициализация завершена');
         };
 
         // Копирование текста
         function copyText() {
             const text = document.getElementById("result");
-            navigator.clipboard.writeText(text.value).then(() => {
+            navigator.clipboard.writeText(text.textContent || text.innerText).then(() => {
                 showToast('Текст скопирован в буфер обмена!', 'success');
             });
         }
@@ -376,28 +818,33 @@
 
         // Обработка ошибок изображения
         function handleImageError(image) {
-            const errorDiv = document.getElementById("imageError");
-            const imageUrl = image.src;
+            console.log("Ошибка загрузки изображения:", image.src);
             
-            console.log("Ошибка загрузки изображения:", imageUrl);
-            
-            if (imageUrl.startsWith('data:image')) {
-                const base64Data = imageUrl.split(',')[1];
-                if (base64Data && base64Data.length > 1000) {
-                    errorDiv.textContent = "Изображение загружено, но не может быть отображено. Попробуйте сохранить файл.";
-                } else {
-                    errorDiv.textContent = "Неверный формат изображения. Данные повреждены.";
-                }
-            } else {
-                errorDiv.textContent = "Ошибка загрузки изображения. Пожалуйста, попробуйте позже.";
+            // Находим контейнер изображения
+            const imageContainer = image.closest('.image-container');
+            if (imageContainer) {
+                const parentContainer = imageContainer.parentElement;
+                parentContainer.innerHTML = `
+                    <div class="image-error">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <p>Ошибка загрузки изображения</p>
+                    </div>
+                `;
             }
-            errorDiv.style.display = "block";
         }
 
         function handleImageLoad(image) {
-            const errorDiv = document.getElementById("imageError");
-            errorDiv.style.display = "none";
             console.log("Изображение успешно загружено:", image.naturalWidth + "x" + image.naturalHeight);
+            
+            // Добавляем анимацию появления
+            image.style.opacity = '0';
+            image.style.transform = 'scale(0.9)';
+            image.style.transition = 'all 0.5s ease';
+            
+            setTimeout(() => {
+                image.style.opacity = '1';
+                image.style.transform = 'scale(1)';
+            }, 100);
         }
 
         // Показ уведомлений
@@ -428,6 +875,128 @@
             });
         }
 
+        // Функция для отображения даты и времени
+        function updateDateTime() {
+            const now = new Date();
+            
+            // Форматирование даты на русском языке
+            const dateOptions = {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            };
+            
+            // Форматирование времени
+            const timeOptions = {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            };
+            
+            const currentDate = now.toLocaleDateString('ru-RU', dateOptions);
+            const currentTime = now.toLocaleTimeString('ru-RU', timeOptions);
+            
+            // Обновляем элементы на странице
+            const dateElement = document.getElementById('currentDate');
+            const timeElement = document.getElementById('currentTime');
+            
+            console.log('updateDateTime вызвана');
+            console.log('Текущая дата:', currentDate);
+            console.log('Текущее время:', currentTime);
+            console.log('Элемент даты найден:', dateElement);
+            console.log('Элемент времени найден:', timeElement);
+            console.log('Текущая тема:', document.documentElement.getAttribute('data-theme'));
+            
+            if (dateElement) {
+                dateElement.textContent = currentDate;
+                dateElement.style.display = 'inline';
+                dateElement.style.visibility = 'visible';
+                dateElement.style.opacity = '1';
+                
+                // Принудительно обновляем стили для видимости
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                if (currentTheme === 'light') {
+                    dateElement.style.color = '#ffffff';
+                    dateElement.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.3)';
+                } else {
+                    dateElement.style.color = 'var(--text-primary)';
+                    dateElement.style.textShadow = 'none';
+                }
+                console.log('Дата обновлена');
+            } else {
+                console.error('Элемент даты не найден!');
+            }
+            
+            if (timeElement) {
+                timeElement.textContent = currentTime;
+                timeElement.style.display = 'inline';
+                timeElement.style.visibility = 'visible';
+                timeElement.style.opacity = '1';
+                
+                // Принудительно обновляем стили для видимости
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                if (currentTheme === 'light') {
+                    timeElement.style.color = '#ffffff';
+                    timeElement.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.3)';
+                } else {
+                    timeElement.style.color = 'var(--text-primary)';
+                    timeElement.style.textShadow = 'none';
+                }
+                console.log('Время обновлено');
+            } else {
+                console.error('Элемент времени не найден!');
+            }
+            
+            // Принудительно показываем контейнеры datetime-display
+            const datetimeDisplays = document.querySelectorAll('.datetime-display');
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            
+            datetimeDisplays.forEach(display => {
+                display.style.display = 'flex';
+                display.style.visibility = 'visible';
+                display.style.opacity = '1';
+                
+                // Принудительно обновляем стили для видимости
+                if (currentTheme === 'light') {
+                    display.style.color = '#ffffff';
+                    display.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.3)';
+                    
+                    // Обновляем стили для иконок
+                    const icons = display.querySelectorAll('i');
+                    icons.forEach(icon => {
+                        icon.style.color = '#ffffff';
+                        icon.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.3)';
+                    });
+                } else {
+                    display.style.color = 'var(--text-primary)';
+                    display.style.textShadow = 'none';
+                    
+                    // Обновляем стили для иконок
+                    const icons = display.querySelectorAll('i');
+                    icons.forEach(icon => {
+                        icon.style.color = 'var(--text-primary)';
+                        icon.style.textShadow = 'none';
+                    });
+                }
+            });
+        }
+        
+        // Обновляем время каждую секунду
+        function startDateTimeUpdate() {
+            console.log('startDateTimeUpdate вызвана');
+            updateDateTime(); // Первоначальное обновление
+            setInterval(updateDateTime, 1000); // Обновление каждую секунду
+            console.log('Интервал обновления установлен');
+        }
+        
+        // Альтернативная инициализация при готовности DOM
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM загружен');
+            updateDateTime();
+        });
+        
         // Валидация формы
         (function() {
             'use strict';
@@ -447,3 +1016,4 @@
     </script>
 </body>
 </html>
+
