@@ -1,195 +1,387 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru" data-theme="light">
 <head>
     <meta charset="UTF-8">
-    <title>Ghostwriter AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghostwriter AI - Генератор SMM контента</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
     <link rel="stylesheet" href="/static/styles.css">
-    <style>
-        .image-container {
-            margin: 20px 0;
-            text-align: center;
-        }
-        
-        .generated-image {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        
-        .generated-image:hover {
-            transform: scale(1.02);
-        }
-        
-        .image-actions {
-            margin-top: 10px;
-        }
-        
-        .btn {
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin: 0 5px;
-            font-size: 14px;
-        }
-        
-        .btn:hover {
-            background: #0056b3;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-        }
-        
-        .btn-secondary:hover {
-            background: #545b62;
-        }
-        
-        /* Модальное окно */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.9);
-        }
-        
-        .modal-content {
-            margin: auto;
-            display: block;
-            max-width: 90%;
-            max-height: 90%;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-        
-        .close {
-            position: absolute;
-            top: 15px;
-            right: 35px;
-            color: #f1f1f1;
-            font-size: 40px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        
-        .close:hover {
-            color: #bbb;
-        }
-        
-        .debug-info {
-            font-size: 12px;
-            color: #666;
-            margin: 5px 0;
-        }
-    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Генератор постов</h1>
-        <form method="post">
-            {% csrf_token %}
-            {{ form.as_p }}
-            <button type="submit">Сгенерировать</button>
-        </form>
+    <!-- Хедер -->
+    <header class="header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <div class="header-brand">
+                        <i class="bi bi-robot me-2"></i>
+                        <span class="brand-text">Ghostwriter AI</span>
+                        <span class="brand-subtitle">Генератор SMM контента</span>
+                    </div>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="header-controls">
+                        <button id="themeToggle" class="btn btn-theme-toggle" onclick="toggleTheme()">
+                            <i class="bi bi-sun-fill" id="themeIcon"></i>
+                            <span id="themeText">Темная тема</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
 
-        {% if result %}
-            <h2>Результат:</h2>
-            {% if limit_reached %}
-                <p>{{ result }}</p>
-            {% else %}
-                <textarea id="result" readonly>{{ result }}</textarea><br>
-                <button onclick="copyText()" class="btn">Скопировать</button>
-                <button onclick="document.forms[0].submit()" class="btn">Сгенерировать ещё</button>
-                <script>
-                    function copyText() {
-                        const text = document.getElementById("result");
-                        navigator.clipboard.writeText(text.value).then(() => alert("Скопировано!"));
-                    }
-                </script>
-                {% if image_url %}
-                    <div class="image-container">
-                        <h3>Сгенерированная иллюстрация:</h3>
-                        <div class="debug-info">Debug: image_url = {{ image_url|truncatechars:50 }}</div>
-                        <img src="{{ image_url }}" alt="AI image" class="generated-image" onclick="openModal(this.src)" 
-                             onerror="handleImageError(this)" onload="handleImageLoad(this)" />
-                        <div id="imageError" style="display: none; color: red; margin: 10px 0;"></div>
-                        <div class="image-actions">
-                            <button onclick="openModal('{{ image_url }}')" class="btn">Увеличить</button>
-                            <button onclick="downloadImage('{{ image_url }}')" class="btn btn-secondary">Сохранить</button>
+    <!-- Навигация -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="#">
+                <i class="bi bi-magic me-2"></i>Генератор постов
+            </a>
+            <span class="navbar-text opacity-75">
+                Создавайте контент с помощью ИИ
+            </span>
+        </div>
+    </nav>
+
+    <!-- Основной контент -->
+    <div class="container-fluid py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-10 col-xl-8">
+                
+                <!-- Заголовок -->
+                <div class="text-center mb-5">
+                    <h1 class="display-4 fw-bold text-gradient mb-3">
+                        <i class="bi bi-magic me-3"></i>Генератор постов
+                    </h1>
+                    <p class="lead text-muted">Создавайте привлекательный контент для социальных сетей с помощью ИИ</p>
+                </div>
+
+                <!-- Форма генерации -->
+                <div class="card shadow-lg border-0 mb-5">
+                    <div class="card-header bg-primary bg-gradient text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-gear me-2"></i>Настройки генерации
+                        </h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <form method="post" class="needs-validation" novalidate>
+                            {% csrf_token %}
+                            <div class="row g-4">
+                                <div class="col-md-4">
+                                    <label for="{{ form.platform.id_for_label }}" class="form-label fw-semibold">
+                                        <i class="bi bi-globe me-2"></i>Платформа
+                                    </label>
+                                    {{ form.platform }}
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="{{ form.template_type.id_for_label }}" class="form-label fw-semibold">
+                                        <i class="bi bi-file-text me-2"></i>Тип контента
+                                    </label>
+                                    {{ form.template_type }}
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="{{ form.tone.id_for_label }}" class="form-label fw-semibold">
+                                        <i class="bi bi-chat-quote me-2"></i>Тональность
+                                    </label>
+                                    {{ form.tone }}
+                                </div>
+                                <div class="col-12">
+                                    <label for="{{ form.topic.id_for_label }}" class="form-label fw-semibold">
+                                        <i class="bi bi-lightbulb me-2"></i>Тема поста
+                                    </label>
+                                    {{ form.topic }}
+                                    <div class="form-text">
+                                        <i class="bi bi-info-circle me-1"></i>Опишите тему, о которой хотите написать пост
+                                    </div>
+                                </div>
+                                <div class="col-12 text-center">
+                                    <button type="submit" class="btn btn-primary btn-lg px-5">
+                                        <i class="bi bi-wand-magic-sparkles me-2"></i>Сгенерировать контент
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Результат -->
+                {% if result %}
+                    <div class="row g-4">
+                        <!-- Текстовый результат -->
+                        <div class="col-lg-6">
+                            <div class="card shadow-lg border-0 h-100">
+                                <div class="card-header bg-success bg-gradient text-white">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-file-text me-2"></i>Сгенерированный пост
+                                    </h5>
+                                </div>
+                                <div class="card-body p-4">
+                                    {% if limit_reached %}
+                                        <div class="alert alert-warning">
+                                            <i class="bi bi-exclamation-triangle me-2"></i>{{ result }}
+                                        </div>
+                                    {% else %}
+                                        <textarea id="result" readonly class="form-control border-0 bg-light">{{ result }}</textarea>
+                                        <div class="mt-3 d-flex gap-2">
+                                            <button onclick="copyText()" class="btn btn-outline-primary">
+                                                <i class="bi bi-clipboard me-2"></i>Скопировать
+                                            </button>
+                                            <button onclick="document.forms[0].submit()" class="btn btn-outline-secondary">
+                                                <i class="bi bi-arrow-clockwise me-2"></i>Сгенерировать ещё
+                                            </button>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Изображение -->
+                        <div class="col-lg-6">
+                            {% if image_url %}
+                                <div class="card shadow-lg border-0 h-100">
+                                    <div class="card-header bg-info bg-gradient text-white">
+                                        <h5 class="mb-0">
+                                            <i class="bi bi-image me-2"></i>Сгенерированная иллюстрация
+                                        </h5>
+                                    </div>
+                                    <div class="card-body p-4 text-center">
+                                        <div class="debug-info mb-3">
+                                            <small class="text-muted">
+                                                <i class="bi bi-info-circle me-1"></i>Debug: {{ image_url|truncatechars:50 }}
+                                            </small>
+                                        </div>
+                                        
+                                        <div class="image-container position-relative">
+                                            <img src="{{ image_url }}" alt="AI generated image" 
+                                                 class="img-fluid rounded shadow-sm generated-image" 
+                                                 onclick="openModal(this.src)" 
+                                                 onerror="handleImageError(this)" 
+                                                 onload="handleImageLoad(this)" />
+                                            
+                                            <!-- Overlay для увеличения -->
+                                            <div class="image-overlay" onclick="openModal('{{ image_url }}')">
+                                                <i class="bi bi-zoom-in text-white fs-1"></i>
+                                            </div>
+                                        </div>
+                                        
+                                        <div id="imageError" class="alert alert-danger mt-3" style="display: none;"></div>
+                                        
+                                        <div class="mt-3 d-flex gap-2 justify-content-center">
+                                            <button onclick="openModal('{{ image_url }}')" class="btn btn-outline-info">
+                                                <i class="bi bi-zoom-in me-2"></i>Увеличить
+                                            </button>
+                                            <button onclick="downloadImage('{{ image_url }}')" class="btn btn-outline-success">
+                                                <i class="bi bi-download me-2"></i>Сохранить
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <div class="card shadow-lg border-0 h-100">
+                                    <div class="card-header bg-warning bg-gradient text-dark">
+                                        <h5 class="mb-0">
+                                            <i class="bi bi-exclamation-triangle me-2"></i>Изображение не сгенерировано
+                                        </h5>
+                                    </div>
+                                    <div class="card-body p-4 text-center">
+                                        <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
+                                        <p class="text-muted mt-3">Попробуйте сгенерировать контент ещё раз</p>
+                                    </div>
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
-                {% else %}
-                    <p><small>Изображение не было сгенерировано</small></p>
                 {% endif %}
-            {% endif %}
-        {% endif %}
-    </div>
 
-    <!-- Модальное окно для увеличенного изображения -->
-    <div id="imageModal" class="modal">
-        <span class="close" onclick="closeModal()">&times;</span>
-        <img class="modal-content" id="modalImage">
-        <div style="text-align: center; margin-top: 10px;">
-            <button onclick="downloadImage(document.getElementById('modalImage').src)" class="btn">Сохранить изображение</button>
+                <!-- Статистика -->
+                {% if result %}
+                    <div class="row mt-5">
+                        <div class="col-12">
+                            <div class="card shadow-lg border-0">
+                                <div class="card-header bg-dark bg-gradient text-white">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-graph-up me-2"></i>Статистика генерации
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row text-center">
+                                        <div class="col-md-3">
+                                            <div class="stat-item">
+                                                <i class="bi bi-calendar-check text-primary fs-1"></i>
+                                                <h4 class="mt-2">{{ result|length }}</h4>
+                                                <p class="text-muted">Символов в тексте</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="stat-item">
+                                                <i class="bi bi-clock text-success fs-1"></i>
+                                                <h4 class="mt-2">{{ result|wordcount }}</h4>
+                                                <p class="text-muted">Слов в тексте</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="stat-item">
+                                                <i class="bi bi-image text-info fs-1"></i>
+                                                <h4 class="mt-2">{% if image_url %}1{% else %}0{% endif %}</h4>
+                                                <p class="text-muted">Изображений</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="stat-item">
+                                                <i class="bi bi-lightning text-warning fs-1"></i>
+                                                <h4 class="mt-2">AI</h4>
+                                                <p class="text-muted">Powered by GigaChat</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
         </div>
     </div>
 
+    <!-- Модальное окно для увеличенного изображения -->
+    <div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content bg-transparent border-0">
+                <div class="modal-header border-0">
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img class="img-fluid rounded shadow-lg" id="modalImage" alt="Full size image">
+                </div>
+                <div class="modal-footer border-0 justify-content-center">
+                    <button onclick="downloadImage(document.getElementById('modalImage').src)" class="btn btn-light">
+                        <i class="bi bi-download me-2"></i>Сохранить изображение
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container text-center">
+            <p class="mb-0">
+                <i class="bi bi-heart-fill text-danger me-1"></i>
+                Создано с помощью GigaChat AI
+            </p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
     <script>
+        // Простая функция переключения темы
+        function toggleTheme() {
+            console.log('toggleTheme вызвана');
+            
+            const html = document.documentElement;
+            const body = document.body;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            
+            const currentTheme = html.getAttribute('data-theme');
+            console.log('Текущая тема:', currentTheme);
+            
+            if (currentTheme === 'dark') {
+                html.setAttribute('data-theme', 'light');
+                body.setAttribute('data-theme', 'light');
+                if (themeIcon) themeIcon.className = 'bi bi-sun-fill';
+                if (themeText) themeText.textContent = 'Темная тема';
+                localStorage.setItem('theme', 'light');
+                console.log('Переключено на светлую тему');
+            } else {
+                html.setAttribute('data-theme', 'dark');
+                body.setAttribute('data-theme', 'dark');
+                if (themeIcon) themeIcon.className = 'bi bi-moon-fill';
+                if (themeText) themeText.textContent = 'Светлая тема';
+                localStorage.setItem('theme', 'dark');
+                console.log('Переключено на темную тему');
+            }
+        }
+
+        // Загрузка сохраненной темы
+        function loadTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const html = document.documentElement;
+            const body = document.body;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            
+            html.setAttribute('data-theme', savedTheme);
+            body.setAttribute('data-theme', savedTheme);
+            
+            if (savedTheme === 'dark') {
+                if (themeIcon) themeIcon.className = 'bi bi-moon-fill';
+                if (themeText) themeText.textContent = 'Светлая тема';
+            } else {
+                if (themeIcon) themeIcon.className = 'bi bi-sun-fill';
+                if (themeText) themeText.textContent = 'Темная тема';
+            }
+        }
+
+        // Инициализация при загрузке страницы - используем window.onload
+        window.onload = function() {
+            console.log('Страница загружена');
+            
+            // Загружаем тему
+            loadTheme();
+            
+            // Находим кнопку
+            const themeToggle = document.getElementById('themeToggle');
+            console.log('Кнопка найдена:', themeToggle);
+            
+            if (!themeToggle) {
+                console.error('Кнопка не найдена!');
+            }
+        };
+
+        // Копирование текста
+        function copyText() {
+            const text = document.getElementById("result");
+            navigator.clipboard.writeText(text.value).then(() => {
+                showToast('Текст скопирован в буфер обмена!', 'success');
+            });
+        }
+
+        // Открытие модального окна
         function openModal(imageSrc) {
-            const modal = document.getElementById("imageModal");
-            const modalImg = document.getElementById("modalImage");
-            modal.style.display = "block";
-            modalImg.src = imageSrc;
+            const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+            document.getElementById('modalImage').src = imageSrc;
+            modal.show();
         }
 
-        function closeModal() {
-            document.getElementById("imageModal").style.display = "none";
-        }
-
+        // Скачивание изображения
         function downloadImage(imageSrc) {
             const link = document.createElement('a');
             link.href = imageSrc;
-            link.download = 'generated_image.jpg';
+            link.download = 'ghostwriter_generated_image.jpg';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            showToast('Изображение сохранено!', 'success');
         }
 
-        // Закрытие модального окна при клике вне изображения
-        window.onclick = function(event) {
-            const modal = document.getElementById("imageModal");
-            if (event.target == modal) {
-                closeModal();
-            }
-        }
-
-        // Закрытие модального окна по Escape
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                closeModal();
-            }
-        });
-
+        // Обработка ошибок изображения
         function handleImageError(image) {
             const errorDiv = document.getElementById("imageError");
             const imageUrl = image.src;
             
             console.log("Ошибка загрузки изображения:", imageUrl);
             
-            // Проверяем, что это base64
             if (imageUrl.startsWith('data:image')) {
-                // Проверяем длину base64
                 const base64Data = imageUrl.split(',')[1];
                 if (base64Data && base64Data.length > 1000) {
                     errorDiv.textContent = "Изображение загружено, но не может быть отображено. Попробуйте сохранить файл.";
@@ -208,22 +400,50 @@
             console.log("Изображение успешно загружено:", image.naturalWidth + "x" + image.naturalHeight);
         }
 
-        function validateBase64(base64String) {
-            try {
-                const base64Data = base64String.split(',')[1];
-                if (!base64Data) return false;
-                
-                // Проверяем длину
-                if (base64Data.length < 1000) return false;
-                
-                // Проверяем, что это валидный base64
-                const decoded = atob(base64Data);
-                return decoded.length > 0;
-            } catch (e) {
-                console.error("Ошибка валидации base64:", e);
-                return false;
-            }
+        // Показ уведомлений
+        function showToast(message, type = 'info') {
+            const toastContainer = document.createElement('div');
+            toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+            toastContainer.style.zIndex = '9999';
+            
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${type} border-0`;
+            toast.setAttribute('role', 'alert');
+            
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            
+            toastContainer.appendChild(toast);
+            document.body.appendChild(toastContainer);
+            
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+            
+            toast.addEventListener('hidden.bs.toast', () => {
+                document.body.removeChild(toastContainer);
+            });
         }
+
+        // Валидация формы
+        (function() {
+            'use strict';
+            window.addEventListener('load', function() {
+                var forms = document.getElementsByClassName('needs-validation');
+                var validation = Array.prototype.filter.call(forms, function(form) {
+                    form.addEventListener('submit', function(event) {
+                        if (form.checkValidity() === false) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
+                        form.classList.add('was-validated');
+                    }, false);
+                });
+            }, false);
+        })();
     </script>
 </body>
 </html>

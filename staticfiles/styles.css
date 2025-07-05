@@ -1,8 +1,5 @@
 /* Основные стили */
-:root,
-html[data-theme="light"],
-html[data-theme="light"] body,
-body[data-theme="light"] {
+:root {
     /* Светлая тема */
     --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
@@ -39,9 +36,7 @@ body[data-theme="light"] {
 }
 
 /* Темная киберпанк тема */
-html[data-theme="dark"],
-html[data-theme="dark"] body,
-body[data-theme="dark"] {
+html[data-theme="dark"] {
     --primary-gradient: linear-gradient(135deg, #00d4ff 0%, #8a2be2 100%);
     --secondary-gradient: linear-gradient(135deg, #ff0080 0%, #ff6b35 100%);
     --success-gradient: linear-gradient(135deg, #00ff88 0%, #00d4ff 100%);
