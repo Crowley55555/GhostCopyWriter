@@ -1,0 +1,33 @@
+{% extends 'generator/index.html' %}
+{% load widget_tweaks %}
+{% block header_buttons %}{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-7 col-lg-5">
+            <div class="card shadow-lg border-0 fade-in text-start">
+                <div class="card-header bg-primary bg-gradient text-white text-center">
+                    <h3 class="mb-0"><i class="bi bi-person-plus me-2"></i>Регистрация</h3>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" autocomplete="off">
+                        {% csrf_token %}
+                        {{ form.non_field_errors }}
+                        {% for field in form %}
+                            <div class="mb-3">
+                                {{ field.label_tag }}
+                                {{ field|add_class:'form-control' }}
+                                {% if field.errors %}
+                                    <div class="text-danger small">{{ field.errors|striptags }}</div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-primary w-100 py-2 mt-2 animate__animated animate__pulse"><i class="bi bi-person-plus me-2"></i>Зарегистрироваться</button>
+                    </form>
+                    <p class="mt-3 text-center text-muted">Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

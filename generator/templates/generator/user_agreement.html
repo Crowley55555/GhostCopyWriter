@@ -1,0 +1,39 @@
+{% extends 'generator/index.html' %}
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+      <div class="card shadow-lg border-0 fade-in">
+        <div class="card-header bg-primary bg-gradient text-white text-center">
+          <h3 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Пользовательское соглашение</h3>
+        </div>
+        <div class="card-body p-4">
+          <div class="mb-3 user-agreement-text" style="max-height: 300px; overflow-y: auto; background: #f8f9fa; border-radius: 8px; padding: 1rem;">
+            <h5>Текст пользовательского соглашения</h5>
+            <p>Пожалуйста, внимательно прочитайте условия использования сервиса Ghostwriter AI. Продолжая регистрацию, вы подтверждаете, что ознакомились и принимаете все положения данного соглашения...</p>
+            <ul>
+              <li>Вы соглашаетесь использовать сервис только в законных целях.</li>
+              <li>Вы несёте ответственность за контент, созданный с помощью сервиса.</li>
+              <li>Администрация не несёт ответственности за возможные убытки, возникшие в результате использования сервиса.</li>
+              <li>Ваши персональные данные обрабатываются в соответствии с политикой конфиденциальности.</li>
+              <li>...</li>
+            </ul>
+            <p>Полный текст соглашения предоставляется по запросу.</p>
+          </div>
+          <form method="post" class="mt-4">
+            {% csrf_token %}
+            {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" id="acceptTerms" name="accept_terms" onchange="document.getElementById('finishBtn').disabled = !this.checked;">
+              <label class="form-check-label" for="acceptTerms">
+                Я прочитал и принимаю пользовательское соглашение
+              </label>
+            </div>
+            <button type="submit" class="btn btn-success w-100" id="finishBtn" disabled>Завершить регистрацию</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} 

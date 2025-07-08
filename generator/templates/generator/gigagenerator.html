@@ -1,0 +1,153 @@
+{% extends 'generator/index.html' %}
+{% load widget_tweaks %}
+{% block nav_menu %}
+<button class="nav-popup-btn fade-in" id="navMenuBtn" title="Меню навигации"><i class="bi bi-list"></i></button>
+<div class="nav-popup-menu fade-in" id="navMenu">
+  <a href="{% url 'profile' %}" class="btn btn-outline-primary"><i class="bi bi-person-circle"></i>Профиль</a>
+  <a href="{% url 'index' %}" class="btn btn-outline-success"><i class="bi bi-magic"></i>Генератор</a>
+  <a href="{% url 'edit_profile' %}" class="btn btn-outline-warning"><i class="bi bi-pencil-square"></i>Редактировать профиль</a>
+  <a href="{% url 'user_wall' %}" class="btn btn-outline-info"><i class="bi bi-card-list"></i>Стена</a>
+</div>
+<script>
+  const navBtn = document.getElementById('navMenuBtn');
+  const navMenu = document.getElementById('navMenu');
+  navBtn.addEventListener('click', function(e) {
+    navMenu.classList.toggle('show');
+    navBtn.classList.toggle('active');
+  });
+  document.addEventListener('click', function(e) {
+    if (!navMenu.contains(e.target) && !navBtn.contains(e.target)) {
+      navMenu.classList.remove('show');
+      navBtn.classList.remove('active');
+    }
+  });
+</script>
+{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10 col-xl-8">
+            <div class="card shadow-lg border-0 fade-in">
+                <div class="card-header bg-primary bg-gradient text-white text-center">
+                    <h3 class="mb-0"><i class="bi bi-magic me-2"></i>Генератор постов</h3>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" class="needs-validation" novalidate id="generateForm">
+                        {% csrf_token %}
+                        <div class="row g-4">
+                            <div class="col-md-4">
+                                {{ form.platform.label_tag }}
+                                {{ form.platform|add_class:'form-control' }}
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.template_type.label_tag }}
+                                {{ form.template_type|add_class:'form-control' }}
+                            </div>
+                            <div class="col-md-4">
+                                {{ form.tone.label_tag }}
+                                {{ form.tone|add_class:'form-control' }}
+                            </div>
+                            <div class="col-12">
+                                {{ form.topic.label_tag }}
+                                {{ form.topic|add_class:'form-control' }}
+                                <div class="form-text">
+                                    <i class="bi bi-info-circle me-1"></i>Опишите тему, о которой хотите написать пост
+                                </div>
+                            </div>
+                            <div class="col-12 text-center">
+                                <button type="submit" id="generateBtn" class="btn btn-primary btn-lg px-5 animate__animated animate__pulse">
+                                    <span id="generateBtnContent">
+                                        <i class="bi bi-wand-magic-sparkles me-2" id="generateIcon"></i>
+                                        <span id="generateText">Сгенерировать контент</span>
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="generationStatus" class="text-center mt-3" style="display:none;">
+                        <div class="spinner-border text-primary" role="status">
+                          <span class="visually-hidden">Генерация...</span>
+                        </div>
+                        <div class="mt-2 fw-semibold">Контент генерируется...</div>
+                    </div>
+                </div>
+            </div>
+            <div id="generationResult">
+            {% if result or image_url %}
+            <div class="row mt-5 fade-in">
+                {% if result %}
+                <div class="col-md-6 mb-4">
+                    <div class="card shadow border-0 h-100">
+                        <div class="card-header bg-success bg-gradient text-white">
+                            <h5 class="mb-0"><i class="bi bi-file-text me-2"></i>Сгенерированный текст</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="auto-resize-textarea" style="white-space: pre-line;">{{ result }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if image_url %}
+                <div class="col-md-6 mb-4 text-center">
+                    <div class="card shadow border-0 h-100">
+                        <div class="card-header bg-info bg-gradient text-white">
+                            <h5 class="mb-0"><i class="bi bi-image me-2"></i>Сгенерированное изображение</h5>
+                        </div>
+                        <div class="card-body">
+                            <img src="{{ image_url }}" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image" style="max-height: 320px; object-fit: contain;">
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+const form = document.getElementById('generateForm');
+const btn = document.getElementById('generateBtn');
+const btnContent = document.getElementById('generateBtnContent');
+const statusBlock = document.getElementById('generationStatus');
+const resultBlock = document.getElementById('generationResult');
+form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    btn.disabled = true;
+    btnContent.style.display = 'none';
+    statusBlock.style.display = '';
+    resultBlock.innerHTML = '';
+    const formData = new FormData(form);
+    fetch(window.location.pathname, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(resp => resp.json())
+    .then(data => {
+        btn.disabled = false;
+        btnContent.style.display = '';
+        statusBlock.style.display = 'none';
+        if (data.success) {
+            let html = '<div class="row mt-5 fade-in">';
+            if (data.result) {
+                html += `<div class=\"col-md-6 mb-4\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-success bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-file-text me-2\"></i>Сгенерированный текст</h5></div><div class=\"card-body\"><div class=\"auto-resize-textarea\" style=\"white-space: pre-line;\">${data.result}</div></div></div></div>`;
+            }
+            if (data.image_url) {
+                html += `<div class=\"col-md-6 mb-4 text-center\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-info bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-image me-2\"></i>Сгенерированное изображение</h5></div><div class=\"card-body\"><img src=\"${data.image_url}\" alt=\"AI generated image\" class=\"img-fluid rounded shadow-sm generated-image\" style=\"max-height: 320px; object-fit: contain;\"></div></div></div>`;
+            }
+            html += '</div>';
+            resultBlock.innerHTML = html;
+        } else {
+            resultBlock.innerHTML = `<div class='alert alert-danger mt-4'>Ошибка: ${data.error || 'Не удалось сгенерировать контент.'}</div>`;
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btnContent.style.display = '';
+        statusBlock.style.display = 'none';
+        resultBlock.innerHTML = `<div class='alert alert-danger mt-4'>Ошибка: Не удалось выполнить генерацию.</div>`;
+    });
+});
+</script>
+{% endblock %} 

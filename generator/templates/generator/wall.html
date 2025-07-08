@@ -1,0 +1,86 @@
+{% extends 'generator/index.html' %}
+{% block nav_menu %}
+<button class="nav-popup-btn" id="navMenuBtn" title="Меню навигации"><i class="bi bi-list"></i></button>
+<div class="nav-popup-menu" id="navMenu">
+  <a href="{% url 'profile' %}" class="btn btn-outline-primary"><i class="bi bi-person-circle"></i>Профиль</a>
+  <a href="{% url 'index' %}" class="btn btn-outline-success"><i class="bi bi-magic"></i>Генератор</a>
+  <a href="{% url 'edit_profile' %}" class="btn btn-outline-warning"><i class="bi bi-pencil-square"></i>Редактировать профиль</a>
+  <a href="{% url 'user_wall' %}" class="btn btn-outline-info"><i class="bi bi-card-list"></i>Стена</a>
+</div>
+<script>
+  const navBtn = document.getElementById('navMenuBtn');
+  const navMenu = document.getElementById('navMenu');
+  navBtn.addEventListener('click', function(e) {
+    navMenu.classList.toggle('show');
+    navBtn.classList.toggle('active');
+  });
+  document.addEventListener('click', function(e) {
+    if (!navMenu.contains(e.target) && !navBtn.contains(e.target)) {
+      navMenu.classList.remove('show');
+      navBtn.classList.remove('active');
+    }
+  });
+</script>
+{% endblock %}
+{% block content %}
+<style>
+.card-delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  background: rgba(255,255,255,0.85);
+  border: none;
+  color: #dc3545;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.2s, background 0.2s;
+}
+.card-delete-btn:hover {
+  opacity: 1;
+  background: #fff;
+  color: #b30000;
+}
+.card.wall-card { position: relative; }
+</style>
+<div class="container-sm px-3 px-md-4">
+<h2 class="mb-4 text-center">Моя стена</h2>
+{% if generations %}
+    <div class="row g-4">
+        {% for gen in generations %}
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'generation_detail' gen.id %}" class="text-decoration-none">
+            <div class="card wall-card shadow-lg border-0 h-100 fade-in clickable-card" style="cursor:pointer;">
+                <form method="get" action="{% url 'delete_generation' gen.id %}" onsubmit="return confirm('Удалить этот пост?');">
+                  <button type="submit" class="card-delete-btn" title="Удалить пост"><i class="bi bi-trash"></i></button>
+                </form>
+                <div class="card-header bg-gradient bg-primary text-white d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-calendar3 me-2"></i>{{ gen.created_at|date:"d.m.Y H:i" }}</span>
+                    <span class="badge bg-info text-dark">{{ gen.platform }}</span>
+                </div>
+                {% if gen.image_url %}
+                <img src="{{ gen.image_url }}" alt="AI image" class="card-img-top generated-image" style="max-height: 120px; object-fit: cover;">
+                {% endif %}
+                <div class="card-body">
+                    <div class="mb-2"><span class="badge bg-secondary">{{ gen.template_type }}</span> <span class="badge bg-warning text-dark">{{ gen.tone }}</span></div>
+                    <div class="mb-2"><strong>Тема:</strong> <span class="text-muted">{{ gen.topic|truncatechars:40 }}</span></div>
+                    <div class="mb-2"><strong>Текст:</strong>
+                        <div class="wall-result-text text-dark" style="white-space: pre-line;">{{ gen.result|truncatechars:100 }}</div>
+                    </div>
+                </div>
+            </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <p>У вас пока нет сгенерированного контента.</p>
+{% endif %}
+<p class="mt-4 text-center"><a href="{% url 'profile' %}" class="btn btn-outline-primary"><i class="bi bi-arrow-left me-1"></i>Назад к профилю</a></p>
+</div>
+{% endblock %} 

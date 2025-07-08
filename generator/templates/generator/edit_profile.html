@@ -1,0 +1,114 @@
+{% extends 'generator/index.html' %}
+{% load widget_tweaks %}
+{% block nav_menu %}
+<button class="nav-popup-btn" id="navMenuBtn" title="Меню навигации"><i class="bi bi-list"></i></button>
+<div class="nav-popup-menu" id="navMenu">
+  <a href="{% url 'profile' %}" class="btn btn-outline-primary"><i class="bi bi-person-circle"></i>Профиль</a>
+  <a href="{% url 'index' %}" class="btn btn-outline-success"><i class="bi bi-magic"></i>Генератор</a>
+  <a href="{% url 'edit_profile' %}" class="btn btn-outline-warning"><i class="bi bi-pencil-square"></i>Редактировать профиль</a>
+  <a href="{% url 'user_wall' %}" class="btn btn-outline-info"><i class="bi bi-card-list"></i>Стена</a>
+</div>
+<script>
+  const navBtn = document.getElementById('navMenuBtn');
+  const navMenu = document.getElementById('navMenu');
+  navBtn.addEventListener('click', function(e) {
+    navMenu.classList.toggle('show');
+    navBtn.classList.toggle('active');
+  });
+  document.addEventListener('click', function(e) {
+    if (!navMenu.contains(e.target) && !navBtn.contains(e.target)) {
+      navMenu.classList.remove('show');
+      navBtn.classList.remove('active');
+    }
+  });
+</script>
+{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow-lg border-0 fade-in text-start">
+                <div class="card-header bg-primary bg-gradient text-white text-center">
+                    <h3 class="mb-0"><i class="bi bi-pencil-square me-2"></i>Редактировать профиль</h3>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" enctype="multipart/form-data" autocomplete="off">
+                        {% csrf_token %}
+                        {{ profile_form.non_field_errors }}
+                        {% for field in profile_form %}
+                            <div class="mb-3">
+                                {{ field.label_tag }}
+                                {{ field|add_class:'form-control' }}
+                                {% if field.errors %}
+                                    <div class="text-danger small">{{ field.errors|striptags }}</div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-primary w-100 py-2 mt-2 animate__animated animate__pulse"><i class="bi bi-save me-2"></i>Сохранить</button>
+                    </form>
+                    <p class="mt-3 text-center"><a href="{% url 'profile' %}" class="text-decoration-underline text-info"><i class="bi bi-arrow-left me-1"></i>Назад к профилю</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/imask"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      flatpickr('.datepicker', {
+        dateFormat: 'd.m.Y',
+        allowInput: true,
+        locale: 'ru',
+        maxDate: 'today',
+        altInput: false,
+      });
+      document.querySelectorAll('.datepicker').forEach(function(input) {
+        // Маска: только дд.мм.гггг, максимум 10 символов
+        IMask(input, {
+          mask: '00.00.0000',
+          lazy: false,
+          autofix: true,
+          blocks: {
+            0: { mask: IMask.MaskedRange, from: 0, to: 99 }
+          },
+          overwrite: true
+        });
+        input.setAttribute('maxlength', '10');
+      });
+      // JS-валидация формата даты
+      const form = document.querySelector('form');
+      if (form) {
+        form.addEventListener('submit', function(e) {
+          const dateInput = form.querySelector('.datepicker');
+          if (dateInput) {
+            const val = dateInput.value.trim();
+            // Проверка формата дд.мм.гггг
+            const re = /^(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[0-2])\.(19|20)\d\d$/;
+            if (val && !re.test(val)) {
+              dateInput.classList.add('is-invalid');
+              dateInput.focus();
+              e.preventDefault();
+              e.stopPropagation();
+              if (!dateInput.nextElementSibling || !dateInput.nextElementSibling.classList.contains('invalid-feedback')) {
+                const err = document.createElement('div');
+                err.className = 'invalid-feedback';
+                err.innerText = 'Введите дату в формате дд.мм.гггг';
+                dateInput.parentNode.appendChild(err);
+              }
+              return false;
+            } else {
+              dateInput.classList.remove('is-invalid');
+              if (dateInput.nextElementSibling && dateInput.nextElementSibling.classList.contains('invalid-feedback')) {
+                dateInput.nextElementSibling.remove();
+              }
+            }
+          }
+        });
+      }
+    });
+  </script>
+{% endblock %} 
