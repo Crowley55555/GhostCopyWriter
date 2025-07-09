@@ -15,6 +15,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.views.decorators.csrf import csrf_exempt
+from datetime import datetime
 
 def generator_view(request):
     result = None
@@ -265,6 +266,15 @@ def agreement_view(request):
     error = ''
     if request.method == 'POST':
         if request.POST.get('accept_terms') == 'on':
+            # Преобразуем дату рождения в объект date
+            date_of_birth = reg_data.get('date_of_birth', None)
+            dob_obj = None
+            if date_of_birth:
+                try:
+                    dob_obj = datetime.strptime(date_of_birth, '%d.%m.%Y').date()
+                except Exception:
+                    error = 'Дата рождения указана в неверном формате.'
+                    return render(request, 'generator/user_agreement.html', {'error': error})
             # Создаём пользователя и профиль
             user = User.objects.create_user(
                 username=reg_data['username'],
@@ -277,7 +287,7 @@ def agreement_view(request):
                 last_name=reg_data.get('last_name', ''),
                 city=reg_data.get('city', ''),
                 phone=reg_data.get('phone', ''),
-                date_of_birth=reg_data.get('date_of_birth', None),
+                date_of_birth=dob_obj,
                 terms_accepted=True,
             )
             login(request, user)

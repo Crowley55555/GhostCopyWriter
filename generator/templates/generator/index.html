@@ -102,15 +102,12 @@
     <script>
         // Простая функция переключения темы
         function toggleTheme() {
-            console.log('toggleTheme вызвана');
-            
             const html = document.documentElement;
             const body = document.body;
             const themeIcon = document.getElementById('themeIcon');
             const themeText = document.getElementById('themeText');
             
             const currentTheme = html.getAttribute('data-theme');
-            console.log('Текущая тема:', currentTheme);
             
             if (currentTheme === 'dark') {
                 html.setAttribute('data-theme', 'light');
@@ -118,14 +115,12 @@
                 if (themeIcon) themeIcon.className = 'bi bi-sun-fill';
                 if (themeText) themeText.textContent = 'Темная тема';
                 localStorage.setItem('theme', 'light');
-                console.log('Переключено на светлую тему');
             } else {
                 html.setAttribute('data-theme', 'dark');
                 body.setAttribute('data-theme', 'dark');
                 if (themeIcon) themeIcon.className = 'bi bi-moon-fill';
                 if (themeText) themeText.textContent = 'Светлая тема';
                 localStorage.setItem('theme', 'dark');
-                console.log('Переключено на темную тему');
             }
             
             // Обновляем дату и время после переключения темы
@@ -215,7 +210,6 @@
             }, 100);
         }
         window.addEventListener('DOMContentLoaded', function() {
-            console.log('DOMContentLoaded: вызываю loadTheme()');
             loadTheme();
         });
 
@@ -646,30 +640,19 @@
 
         // Инициализация при загрузке страницы - используем window.onload
         window.onload = function() {
-            console.log('Страница загружена');
-            
             // Загружаем тему
             loadTheme();
-            
             // Находим кнопку
             const themeToggle = document.getElementById('themeToggle');
-            console.log('Кнопка найдена:', themeToggle);
-            
             if (!themeToggle) {
                 console.error('Кнопка не найдена!');
             }
-            
             // Принудительно обновляем дату и время сразу
-            console.log('Запускаем обновление даты и времени...');
             updateDateTime();
-            
             // Запускаем обновление даты и времени
             startDateTimeUpdate();
-            
             // Подстраиваем высоту текстового поля
             autoResizeTextarea();
-            
-            console.log('Инициализация завершена');
         };
 
         // Копирование текста
@@ -700,7 +683,6 @@
 
         // Обработка ошибок изображения
         function handleImageError(image) {
-            console.log("Ошибка загрузки изображения:", image.src);
             
             // Находим контейнер изображения
             const imageContainer = image.closest('.image-container');
@@ -716,7 +698,6 @@
         }
 
         function handleImageLoad(image) {
-            console.log("Изображение успешно загружено:", image.naturalWidth + "x" + image.naturalHeight);
             
             // Добавляем анимацию появления
             image.style.opacity = '0';
@@ -784,13 +765,6 @@
             const dateElement = document.getElementById('currentDate');
             const timeElement = document.getElementById('currentTime');
             
-            console.log('updateDateTime вызвана');
-            console.log('Текущая дата:', currentDate);
-            console.log('Текущее время:', currentTime);
-            console.log('Элемент даты найден:', dateElement);
-            console.log('Элемент времени найден:', timeElement);
-            console.log('Текущая тема:', document.documentElement.getAttribute('data-theme'));
-            
             if (dateElement) {
                 dateElement.textContent = currentDate;
                 dateElement.style.display = 'inline';
@@ -806,7 +780,6 @@
                     dateElement.style.color = 'var(--text-primary)';
                     dateElement.style.textShadow = 'none';
                 }
-                console.log('Дата обновлена');
             } else {
                 console.error('Элемент даты не найден!');
             }
@@ -826,7 +799,6 @@
                     timeElement.style.color = 'var(--text-primary)';
                     timeElement.style.textShadow = 'none';
                 }
-                console.log('Время обновлено');
             } else {
                 console.error('Элемент времени не найден!');
             }
@@ -867,15 +839,12 @@
         
         // Обновляем время каждую секунду
         function startDateTimeUpdate() {
-            console.log('startDateTimeUpdate вызвана');
             updateDateTime(); // Первоначальное обновление
             setInterval(updateDateTime, 1000); // Обновление каждую секунду
-            console.log('Интервал обновления установлен');
         }
         
         // Альтернативная инициализация при готовности DOM
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM загружен');
             updateDateTime();
         });
         
@@ -896,6 +865,8 @@
             }, false);
         })();
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/imask@7.6.0/dist/imask.js"></script>
+    {% block extra_js %}{% endblock %}
 </body>
 </html>
 

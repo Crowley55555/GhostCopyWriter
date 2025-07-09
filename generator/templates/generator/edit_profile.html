@@ -54,61 +54,20 @@
 </div>
 {% endblock %}
 {% block extra_js %}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <script src="https://cdn.jsdelivr.net/npm/imask"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      flatpickr('.datepicker', {
-        dateFormat: 'd.m.Y',
-        allowInput: true,
-        locale: 'ru',
-        maxDate: 'today',
-        altInput: false,
-      });
+  document.addEventListener('DOMContentLoaded', function() {
       document.querySelectorAll('.datepicker').forEach(function(input) {
-        // Маска: только дд.мм.гггг, максимум 10 символов
-        IMask(input, {
-          mask: '00.00.0000',
-          lazy: false,
-          autofix: true,
-          blocks: {
-            0: { mask: IMask.MaskedRange, from: 0, to: 99 }
-          },
-          overwrite: true
-        });
-        input.setAttribute('maxlength', '10');
+          input.setAttribute('maxlength', '10');
+          input.addEventListener('input', function(e) {
+              let value = this.value.replace(/[^0-9]/g, '');
+              if (value.length > 8) value = value.slice(0, 8);
+              let result = '';
+              if (value.length > 0) result += value.slice(0, 2);
+              if (value.length > 2) result += '.' + value.slice(2, 4);
+              if (value.length > 4) result += '.' + value.slice(4, 8);
+              this.value = result;
+          });
       });
-      // JS-валидация формата даты
-      const form = document.querySelector('form');
-      if (form) {
-        form.addEventListener('submit', function(e) {
-          const dateInput = form.querySelector('.datepicker');
-          if (dateInput) {
-            const val = dateInput.value.trim();
-            // Проверка формата дд.мм.гггг
-            const re = /^(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[0-2])\.(19|20)\d\d$/;
-            if (val && !re.test(val)) {
-              dateInput.classList.add('is-invalid');
-              dateInput.focus();
-              e.preventDefault();
-              e.stopPropagation();
-              if (!dateInput.nextElementSibling || !dateInput.nextElementSibling.classList.contains('invalid-feedback')) {
-                const err = document.createElement('div');
-                err.className = 'invalid-feedback';
-                err.innerText = 'Введите дату в формате дд.мм.гггг';
-                dateInput.parentNode.appendChild(err);
-              }
-              return false;
-            } else {
-              dateInput.classList.remove('is-invalid');
-              if (dateInput.nextElementSibling && dateInput.nextElementSibling.classList.contains('invalid-feedback')) {
-                dateInput.nextElementSibling.remove();
-              }
-            }
-          }
-        });
-      }
-    });
+  });
   </script>
 {% endblock %} 
