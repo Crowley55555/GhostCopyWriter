@@ -26,42 +26,262 @@
 {% block content %}
 <div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-lg-10 col-xl-8">
-            <div class="card shadow-lg border-0 fade-in">
-                <div class="card-header bg-primary bg-gradient text-white text-center">
+        <div class="col-lg-12 col-xl-10">
+            <div class="card shadow-lg border-0 fade-in" style="max-width: 1100px; margin-left: auto; margin-right: auto; overflow: visible;">
+                <div class="card-header bg-primary bg-gradient text-white text-center d-flex justify-content-between align-items-center">
                     <h3 class="mb-0"><i class="bi bi-magic me-2"></i>Генератор постов</h3>
+                    <div>
+                        <button class="btn btn-outline-light btn-sm me-2" id="openSaveTemplateModal" title="Сохранить как шаблон"><i class="bi bi-bookmark-plus"></i></button>
+                        <!-- Меню шаблонов в виде карточки -->
+                        <div id="templateCard" class="shadow rounded p-3 mb-3" style="min-width:260px; max-width:350px; width:100%; position: absolute; top:60px; right:30px; z-index:1050; display:none; box-shadow:0 4px 24px rgba(0,0,0,0.12);">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-bold"><i class="bi bi-bookmarks me-1"></i>Шаблоны</span>
+                                <button class="btn btn-sm btn-outline-secondary" id="closeTemplateCard" title="Закрыть"><i class="bi bi-x"></i></button>
+                            </div>
+                            <div id="templateListCard" style="max-height:260px; overflow-y:auto;"></div>
+                        </div>
+                        <!-- Кнопка для открытия карточки шаблонов -->
+                        <button class="btn btn-outline-light btn-sm me-2" id="openTemplateCard" title="Шаблоны"><i class="bi bi-bookmarks"></i> Шаблоны</button>
+                    </div>
                 </div>
                 <div class="card-body p-4">
                     <form method="post" class="needs-validation" novalidate id="generateForm">
                         {% csrf_token %}
                         <div class="row g-4">
-                            <div class="col-md-4">
-                                {{ form.platform.label_tag }}
-                                {{ form.platform|add_class:'form-control' }}
-                            </div>
-                            <div class="col-md-4">
-                                {{ form.template_type.label_tag }}
-                                {{ form.template_type|add_class:'form-control' }}
-                            </div>
-                            <div class="col-md-4">
-                                {{ form.tone.label_tag }}
-                                {{ form.tone|add_class:'form-control' }}
-                            </div>
+                            <!-- Основные поля -->
                             <div class="col-12">
-                                {{ form.topic.label_tag }}
+                                <label for="id_topic" class="form-label"><i class="bi bi-lightbulb me-1"></i>Тема поста <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Кратко опишите, о чём будет пост"></i></label>
                                 {{ form.topic|add_class:'form-control' }}
-                                <div class="form-text">
-                                    <i class="bi bi-info-circle me-1"></i>Опишите тему, о которой хотите написать пост
+                            </div>
+
+                            <!-- Группа: Стиль и эмоция -->
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-brush me-1"></i>Стиль подачи <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Манера, в которой строится коммуникация"></i></label>
+                                <div class="dropdown-multicheck mb-2" data-field="delivery_style">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать стиль</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        {% for val, label in form.delivery_style.field.choices %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="delivery_style" id="id_delivery_style_{{ forloop.counter0 }}" value="{{ val }}">
+                                            <label class="form-check-label" for="id_delivery_style_{{ forloop.counter0 }}">{{ label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
                                 </div>
                             </div>
-                            <div class="col-12 text-center">
-                                <button type="submit" id="generateBtn" class="btn btn-primary btn-lg px-5 animate__animated animate__pulse">
-                                    <span id="generateBtnContent">
-                                        <i class="bi bi-wand-magic-sparkles me-2" id="generateIcon"></i>
-                                        <span id="generateText">Сгенерировать контент</span>
-                                    </span>
-                                </button>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-emoji-smile me-1"></i>Эмоциональный окрас <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Какие эмоции должен вызывать пост"></i></label>
+                                <div class="dropdown-multicheck mb-2" data-field="emotional_tone">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать эмоции</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        {% for val, label in form.emotional_tone.field.choices %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="emotional_tone" id="id_emotional_tone_{{ forloop.counter0 }}" value="{{ val }}">
+                                            <label class="form-check-label" for="id_emotional_tone_{{ forloop.counter0 }}">{{ label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
+                                </div>
                             </div>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-palette me-1"></i>Тон голоса <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Базовая эмоциональная и личностная окраска сообщения"></i></label>
+                                <div class="dropdown-multicheck mb-2" data-field="voice_tone">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать тон</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        {% for val, label in form.voice_tone.field.choices %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="voice_tone" id="id_voice_tone_{{ forloop.counter0 }}" value="{{ val }}">
+                                            <label class="form-check-label" for="id_voice_tone_{{ forloop.counter0 }}">{{ label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-award me-1"></i>Брендовый голос <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Уникальные характеристики коммуникации бренда"></i></label>
+                                <div class="dropdown-multicheck mb-2" data-field="brand_voice">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать брендовый голос</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        {% for val, label in form.brand_voice.field.choices %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="brand_voice" id="id_brand_voice_{{ forloop.counter0 }}" value="{{ val }}">
+                                            <label class="form-check-label" for="id_brand_voice_{{ forloop.counter0 }}">{{ label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-list-check me-1"></i>Формат изложения <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Структурный способ подачи информации"></i></label>
+                                <div class="dropdown-multicheck mb-2" data-field="content_format">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать формат</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        {% for val, label in form.content_format.field.choices %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="content_format" id="id_content_format_{{ forloop.counter0 }}" value="{{ val }}">
+                                            <label class="form-check-label" for="id_content_format_{{ forloop.counter0 }}">{{ label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-people me-1"></i>Аудитория <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Фокус на конкретную подгруппу аудитории"></i></label>
+                                <div class="dropdown-multicheck mb-2" data-field="audience">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать аудиторию</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        {% for val, label in form.audience.field.choices %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="audience" id="id_audience_{{ forloop.counter0 }}" value="{{ val }}">
+                                            <label class="form-check-label" for="id_audience_{{ forloop.counter0 }}">{{ label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
+                                </div>
+                            </div>
+
+                            <!-- Группа: Цель и действие -->
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-bullseye me-1"></i>Цель контента <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Основная задача, которую должен выполнить пост"></i></label>
+                                <div class="dropdown-multicheck mb-2" data-field="content_purpose">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать цель</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        {% for val, label in form.content_purpose.field.choices %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="content_purpose" id="id_content_purpose_{{ forloop.counter0 }}" value="{{ val }}">
+                                            <label class="form-check-label" for="id_content_purpose_{{ forloop.counter0 }}">{{ label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-flag me-1"></i>Призыв к действию <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Что вы хотите, чтобы пользователь сделал после прочтения"></i></label>
+                                {{ form.cta|add_class:'form-select' }}
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-window me-1"></i>Адаптация под платформу <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Учет специфики и ограничений соцсети"></i></label>
+                                <div class="dropdown-multicheck mb-2" data-field="platform_specific">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать платформу</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        <div class="mb-2 text-muted small">Разрешённые платформы</div>
+                                        <div class="mb-2">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_vk" value="VK">
+                                                <label class="form-check-label" for="id_platform_specific_vk">Оптимизирован под VK</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_dzen" value="Дзен">
+                                                <label class="form-check-label" for="id_platform_specific_dzen">Оптимизирован под Дзен</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_telegram" value="Telegram">
+                                                <label class="form-check-label" for="id_platform_specific_telegram">Оптимизирован под Telegram</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_tiktok" value="TikTok">
+                                                <label class="form-check-label" for="id_platform_specific_tiktok">Оптимизирован под TikTok/Reels</label>
+                                            </div>
+                                        </div>
+                                        <div class="mb-2 text-danger small fw-bold">Запрещённые в Российской Федерации</div>
+                                        <div class="mb-2">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_instagram" value="Instagram">
+                                                <label class="form-check-label text-danger" for="id_platform_specific_instagram">Оптимизирован под Instagram</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_facebook" value="Facebook">
+                                                <label class="form-check-label text-danger" for="id_platform_specific_facebook">Оптимизирован под Facebook</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_twitter" value="Twitter">
+                                                <label class="form-check-label text-danger" for="id_platform_specific_twitter">Оптимизирован под Twitter/X</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_linkedin" value="LinkedIn">
+                                                <label class="form-check-label text-danger" for="id_platform_specific_linkedin">Оптимизирован под LinkedIn</label>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2">
+                                            <a href="https://www.consultant.ru/document/cons_doc_LAW_393349/" target="_blank" class="text-danger fw-bold" style="text-decoration:underline;">
+                                                Запрещены в Российской Федерации
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-person-badge me-1"></i>Уровень формальности <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Степень официальности языка и обращения"></i></label>
+                                <div class="dropdown-multicheck mb-2" data-field="formality_level">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать уровень</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        {% for val, label in form.formality_level.field.choices %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="formality_level" id="id_formality_level_{{ forloop.counter0 }}" value="{{ val }}">
+                                            <label class="form-check-label" for="id_formality_level_{{ forloop.counter0 }}">{{ label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
+                                </div>
+                            </div>
+
+                            <!-- Группа: Технические настройки -->
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-arrows-expand me-1"></i>Длина поста <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Ориентировочный объем текста"></i></label>
+                                <input type="range" class="form-range" min="0" max="3" step="1" id="postLengthSlider" name="post_length_slider">
+                                <select id="id_post_length" name="post_length" style="display:none">
+                                    <option value="Очень короткий">Очень короткий</option>
+                                    <option value="Короткий">Короткий</option>
+                                    <option value="Средний">Средний</option>
+                                    <option value="Длинный">Длинный</option>
+                                </select>
+                                <div class="slider-labels d-flex justify-content-between small mt-1">
+                                    <span>Очень короткий</span><span>Короткий</span><span>Средний</span><span>Длинный</span>
+                                </div>
+                                <div id="postLengthDescription" class="form-text mt-1"></div>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-hash me-1"></i>Количество хэштегов <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Стратегия применения хэштегов"></i></label>
+                                <input type="range" class="form-range" min="0" max="3" step="1" id="hashtagUsageSlider" name="hashtag_usage_slider">
+                                <select id="id_hashtag_usage" name="hashtag_usage" style="display:none">
+                                    <option value="Без хэштегов">Без хэштегов</option>
+                                    <option value="Минимум">Минимум</option>
+                                    <option value="Оптимально">Оптимально</option>
+                                    <option value="Максимум">Максимум</option>
+                                </select>
+                                <div class="slider-labels d-flex justify-content-between small mt-1">
+                                    <span>Без хэштегов</span><span>Минимум</span><span>Оптимально</span><span>Максимум</span>
+                                </div>
+                                <div id="hashtagUsageDescription" class="form-text mt-1"></div>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label"><i class="bi bi-at me-1"></i>Упоминания <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Нужно ли упоминать других пользователей или бренды"></i></label>
+                                <div class="dropdown-multicheck mb-2 dropup" data-field="mentions">
+                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать упоминания</button>
+                                    <div class="dropdown-menu w-100 p-2">
+                                        {% for val, label in form.mentions.field.choices %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="mentions" id="id_mentions_{{ forloop.counter0 }}" value="{{ val }}">
+                                            <label class="form-check-label" for="id_mentions_{{ forloop.counter0 }}">{{ label }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="selected-tags mt-1"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary" id="generateBtn"><span id="generateBtnContent"><i class="bi bi-magic me-2"></i>Сгенерировать</span></button>
+                            <button type="button" class="btn btn-outline-secondary" id="resetFormBtn"><i class="bi bi-arrow-counterclockwise me-1"></i>Очистить форму</button>
                         </div>
                     </form>
                     <div id="generationStatus" class="text-center mt-3" style="display:none;">
@@ -74,7 +294,7 @@
             </div>
             <div id="generationResult">
             {% if result or image_url %}
-            <div class="row mt-5 fade-in">
+            <div class="row mt-5">
                 {% if result %}
                 <div class="col-md-6 mb-4">
                     <div class="card shadow border-0 h-100">
@@ -105,6 +325,90 @@
         </div>
     </div>
 </div>
+
+<!-- Модалка для сохранения шаблона -->
+<div class="modal fade" id="saveTemplateModal" tabindex="-1" aria-labelledby="saveTemplateModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="saveTemplateModalLabel">Сохранить шаблон настроек</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="templateNameInput" class="form-label">Название шаблона</label>
+          <input type="text" class="form-control" id="templateNameInput" maxlength="100">
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="templateDefaultCheckbox">
+          <label class="form-check-label" for="templateDefaultCheckbox">Сделать шаблоном по умолчанию</label>
+        </div>
+        <div id="saveTemplateError" class="text-danger small"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-primary" id="saveTemplateBtn">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка для переименования шаблона -->
+<div class="modal fade" id="renameTemplateModal" tabindex="-1" aria-labelledby="renameTemplateModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="renameTemplateModalLabel">Переименовать шаблон</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <input type="text" class="form-control" id="renameTemplateInput" maxlength="100">
+        <div id="renameTemplateError" class="text-danger small mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-primary" id="renameTemplateBtn">Переименовать</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.card-header {
+    position: relative;
+    z-index: 20;
+}
+.card-header .dropdown-menu {
+    position: absolute !important;
+    right: 0;
+    left: auto;
+    top: 100%;
+    z-index: 30;
+    min-width: 260px;
+    width: max-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: nowrap;
+    overflow-x: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    background: #fff;
+    display: none;
+    padding: 0.5rem 0.75rem;
+    border-radius: 12px;
+}
+.card-header .dropdown.show .dropdown-menu,
+.card-header .dropdown-menu.show {
+    display: block;
+}
+.card, .card-body {
+    z-index: auto !important;
+    transform: none !important;
+    filter: none !important;
+    perspective: none !important;
+    overflow: visible !important;
+}
+</style>
+
 <script>
 const form = document.getElementById('generateForm');
 const btn = document.getElementById('generateBtn');
@@ -118,6 +422,7 @@ form.addEventListener('submit', function(e) {
     statusBlock.style.display = '';
     resultBlock.innerHTML = '';
     const formData = new FormData(form);
+    showToast('Генерация текста...', 'info');
     fetch(window.location.pathname, {
         method: 'POST',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -129,24 +434,526 @@ form.addEventListener('submit', function(e) {
         btnContent.style.display = '';
         statusBlock.style.display = 'none';
         if (data.success) {
-            let html = '<div class="row mt-5 fade-in">';
+            showToast('Текст успешно сгенерирован!', 'success');
+            showToast('Генерация промпта для изображения...', 'info');
+            setTimeout(() => showToast('Генерация изображения...', 'info'), 800);
+            let html = '<div class="row mt-5">';
             if (data.result) {
                 html += `<div class=\"col-md-6 mb-4\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-success bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-file-text me-2\"></i>Сгенерированный текст</h5></div><div class=\"card-body\"><div class=\"auto-resize-textarea\" style=\"white-space: pre-line;\">${data.result}</div></div></div></div>`;
             }
             if (data.image_url) {
+                setTimeout(() => showToast('Изображение успешно сгенерировано!', 'success'), 1800);
                 html += `<div class=\"col-md-6 mb-4 text-center\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-info bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-image me-2\"></i>Сгенерированное изображение</h5></div><div class=\"card-body\"><img src=\"${data.image_url}\" alt=\"AI generated image\" class=\"img-fluid rounded shadow-sm generated-image\" style=\"max-height: 320px; object-fit: contain;\"></div></div></div>`;
             }
             html += '</div>';
             resultBlock.innerHTML = html;
         } else {
-            resultBlock.innerHTML = `<div class='alert alert-danger mt-4'>Ошибка: ${data.error || 'Не удалось сгенерировать контент.'}</div>`;
+            showToast(data.error || 'Ошибка генерации контента', 'danger');
+            let errorHtml = `<div class='alert alert-danger mt-4'>Ошибка: ${data.error || 'Не удалось сгенерировать контент.'}</div>`;
+            if (data.form_errors) {
+                errorHtml += '<ul class="mt-2">';
+                for (const [field, errors] of Object.entries(data.form_errors)) {
+                    errorHtml += `<li><b>${field}</b>: ${errors.join(', ')}</li>`;
+                }
+                errorHtml += '</ul>';
+            }
+            resultBlock.innerHTML = errorHtml;
         }
     })
     .catch(() => {
         btn.disabled = false;
         btnContent.style.display = '';
         statusBlock.style.display = 'none';
+        showToast('Ошибка: Не удалось выполнить генерацию изображения.', 'danger');
         resultBlock.innerHTML = `<div class='alert alert-danger mt-4'>Ошибка: Не удалось выполнить генерацию.</div>`;
+    });
+});
+
+// --- UI/UX helpers ---
+function showToast(msg, type='info') {
+    if (window.bootstrap) {
+        let toast = document.createElement('div');
+        toast.className = `toast align-items-center text-bg-${type} border-0 show position-fixed top-0 end-0 m-3`;
+        toast.style.zIndex = 9999;
+        toast.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    } else {
+        alert(msg);
+    }
+}
+
+// --- Шаблоны генератора ---
+let currentTemplateId = null;
+let templatesCache = [];
+
+function fetchTemplates() {
+    fetch('/api/get-templates/')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                templatesCache = data.templates;
+                renderTemplateDropdown();
+                // --- автозагрузка шаблона по умолчанию ---
+                const def = templatesCache.find(t => t.is_default);
+                if (def) {
+                    loadTemplate(def.id);
+                }
+            }
+        });
+}
+
+function renderTemplateDropdown() {
+    const list = document.getElementById('templateListCard');
+    list.innerHTML = '';
+    if (!templatesCache.length) {
+        list.innerHTML = '<li class="dropdown-item text-muted">Нет шаблонов</li>';
+        return;
+    }
+    templatesCache.forEach(t => {
+        const li = document.createElement('li');
+        li.className = 'dropdown-item d-flex justify-content-between align-items-center';
+        // Исправлено экранирование кавычек:
+        const safeName = t.name.replace(/'/g, "\\'").replace(/"/g, '\\"');
+        li.innerHTML = `<span style="cursor:pointer;" onclick="loadTemplate('${t.id}')">${t.name}${t.is_default ? ' <i class=\'bi bi-star-fill text-warning\'></i>' : ''}</span>
+        <span>
+            <button class="btn btn-sm btn-outline-primary me-1" title="Переименовать" onclick="event.stopPropagation(); openRenameTemplateModal('${t.id}', \"${safeName}\")"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-danger me-1" title="Удалить" onclick="event.stopPropagation(); deleteTemplate('${t.id}')"><i class="bi bi-trash"></i></button>
+            <button class="btn btn-sm btn-outline-warning" title="По умолчанию" onclick="event.stopPropagation(); setDefaultTemplate('${t.id}')"><i class="bi bi-star${t.is_default ? '-fill' : ''}"></i></button>
+        </span>`;
+        list.appendChild(li);
+    });
+}
+
+function loadTemplate(id) {
+    fetch(`/api/load-template/?id=${id}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                currentTemplateId = id;
+                fillFormFromSettings(data.settings);
+                showToast('Шаблон применён', 'success');
+            } else {
+                showToast(data.error || 'Ошибка загрузки шаблона', 'danger');
+            }
+        });
+}
+
+function fillFormFromSettings(settings, retry = 0) {
+    for (const [key, value] of Object.entries(settings)) {
+        if (key === 'topic') continue;
+        let values = value;
+        if (Array.isArray(value)) {
+            values = value;
+        } else if (typeof value === 'string') {
+            values = [value];
+        }
+        const checkboxes = document.querySelectorAll(`input[type=checkbox][name='${key}']`);
+        if (checkboxes.length) {
+            checkboxes.forEach(cb => {
+                cb.checked = values.map(String).includes(String(cb.value));
+            });
+            const wrapper = checkboxes[0].closest('.dropdown-multicheck');
+            if (wrapper && typeof updateSelectedTags === 'function') updateSelectedTags(wrapper);
+            continue;
+        }
+        const field = document.getElementById(`id_${key}`);
+        if (!field) {
+            if (key === 'post_length') {
+                if (postLengthSelect && postLengthSlider) {
+                    postLengthSelect.value = value;
+                    postLengthSlider.value = postLengthLabels.indexOf(value);
+                    postLengthSelect.dispatchEvent(new Event('change'));
+                }
+                continue;
+            }
+            if (key === 'hashtag_usage') {
+                if (hashtagUsageSelect && hashtagUsageSlider) {
+                    hashtagUsageSelect.value = value;
+                    hashtagUsageSlider.value = hashtagUsageLabels.indexOf(value);
+                    hashtagUsageSelect.dispatchEvent(new Event('change'));
+                }
+                continue;
+            }
+            continue;
+        }
+        if (Array.isArray(values)) {
+            if (field.options) {
+                for (let i = 0; i < field.options.length; i++) {
+                    field.options[i].selected = values.map(String).includes(String(field.options[i].value));
+                }
+            }
+        } else {
+            field.value = String(value);
+        }
+    }
+    document.querySelectorAll('.dropdown-multicheck').forEach(wrapper => {
+        if (typeof updateSelectedTags === 'function') updateSelectedTags(wrapper);
+    });
+}
+
+function getFormSettings() {
+    const form = document.getElementById('generateForm');
+    const data = {};
+    Array.from(form.elements).forEach(el => {
+        if (!el.name) return;
+        if (el.name === 'post_length_slider' || el.name === 'hashtag_usage_slider') return; // пропускаем слайдеры
+        if (el.type === 'checkbox') {
+            if (!data[el.name]) data[el.name] = [];
+            if (el.checked) data[el.name].push(el.value);
+        } else if (el.type === 'radio') {
+            if (el.checked) data[el.name] = el.value;
+        } else if (el.type === 'select-multiple') {
+            data[el.name] = Array.from(el.selectedOptions).map(o => o.value);
+        } else {
+            data[el.name] = el.value;
+        }
+    });
+    // Исключаем поле topic из settings для шаблона
+    delete data['topic'];
+    return data;
+}
+
+// --- Сохранение шаблона ---
+document.getElementById('openSaveTemplateModal').onclick = function() {
+    document.getElementById('templateNameInput').value = '';
+    document.getElementById('templateDefaultCheckbox').checked = false;
+    document.getElementById('saveTemplateError').textContent = '';
+    new bootstrap.Modal(document.getElementById('saveTemplateModal')).show();
+};
+document.getElementById('saveTemplateBtn').onclick = function() {
+    const name = document.getElementById('templateNameInput').value.trim();
+    const is_default = document.getElementById('templateDefaultCheckbox').checked;
+    if (!name) {
+        document.getElementById('saveTemplateError').textContent = 'Введите название шаблона';
+        return;
+    }
+    let settings = getFormSettings();
+    // На всякий случай удаляем topic (если вдруг getFormSettings используется ещё где-то)
+    delete settings['topic'];
+    fetch('/api/save-template/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+        body: JSON.stringify({ name, settings, is_default })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Шаблон сохранён', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('saveTemplateModal')).hide();
+            fetchTemplates();
+        } else {
+            document.getElementById('saveTemplateError').textContent = data.error || 'Ошибка сохранения';
+        }
+    });
+};
+
+// --- Удаление шаблона ---
+function deleteTemplate(id) {
+    if (!confirm('Удалить этот шаблон?')) return;
+    fetch('/api/delete-template/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+        body: JSON.stringify({ id })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Шаблон удалён', 'success');
+            fetchTemplates();
+        } else {
+            showToast(data.error || 'Ошибка удаления', 'danger');
+        }
+    });
+}
+
+// --- Переименование шаблона ---
+let renameTemplateId = null;
+function openRenameTemplateModal(id, name) {
+    renameTemplateId = id;
+    document.getElementById('renameTemplateInput').value = name;
+    document.getElementById('renameTemplateError').textContent = '';
+    new bootstrap.Modal(document.getElementById('renameTemplateModal')).show();
+}
+document.getElementById('renameTemplateBtn').onclick = function() {
+    const new_name = document.getElementById('renameTemplateInput').value.trim();
+    if (!new_name) {
+        document.getElementById('renameTemplateError').textContent = 'Введите новое имя';
+        return;
+    }
+    fetch('/api/rename-template/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+        body: JSON.stringify({ id: renameTemplateId, new_name })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Шаблон переименован', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('renameTemplateModal')).hide();
+            fetchTemplates();
+        } else {
+            document.getElementById('renameTemplateError').textContent = data.error || 'Ошибка';
+        }
+    });
+};
+
+// --- Установка шаблона по умолчанию ---
+function setDefaultTemplate(id) {
+    fetch('/api/set-default-template/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+        body: JSON.stringify({ id })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Шаблон установлен по умолчанию', 'success');
+            fetchTemplates();
+        } else {
+            showToast(data.error || 'Ошибка', 'danger');
+        }
+    });
+}
+
+// --- Автозагрузка шаблонов при старте ---
+document.addEventListener('DOMContentLoaded', function() {
+    fetchTemplates();
+});
+
+// --- Bootstrap tooltips ---
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+        new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+
+// --- Кастомные мультиселекты (dropdown-multicheck) ---
+function closeAllDropdowns() {
+    document.querySelectorAll('.dropdown-multicheck .dropdown-menu').forEach(menu => menu.classList.remove('show'));
+}
+document.addEventListener('click', function(e) {
+    document.querySelectorAll('.dropdown-multicheck').forEach(function(wrapper) {
+        if (!wrapper.contains(e.target)) {
+            wrapper.querySelector('.dropdown-menu').classList.remove('show');
+        }
+    });
+});
+document.querySelectorAll('.dropdown-multicheck .dropdown-toggle').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const wrapper = btn.closest('.dropdown-multicheck');
+        const menu = btn.parentElement.querySelector('.dropdown-menu');
+        // Если меню уже открыто — закрываем
+        if (menu.classList.contains('show')) {
+            menu.classList.remove('show');
+            wrapper.classList.remove('dropup');
+            return;
+        }
+        closeAllDropdowns();
+        // --- Dropup logic ---
+        menu.classList.remove('show');
+        wrapper.classList.remove('dropup');
+        // Для mentions всегда dropup
+        if (wrapper.getAttribute('data-field') === 'mentions') {
+            wrapper.classList.add('dropup');
+            menu.classList.toggle('show');
+            return;
+        }
+        // Показываем меню для измерения
+        menu.style.visibility = 'hidden';
+        menu.classList.add('show');
+        const rect = menu.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.top - 8;
+        const spaceAbove = rect.top - 8;
+        menu.classList.remove('show');
+        menu.style.visibility = '';
+        if (rect.height > spaceBelow && spaceAbove > spaceBelow) {
+            wrapper.classList.add('dropup');
+        } else {
+            wrapper.classList.remove('dropup');
+        }
+        menu.classList.toggle('show');
+    });
+});
+function updateSelectedTags(wrapper) {
+    const field = wrapper.getAttribute('data-field');
+    const checked = wrapper.querySelectorAll('.form-check-input:checked');
+    const tagsDiv = wrapper.querySelector('.selected-tags');
+    tagsDiv.innerHTML = '';
+    checked.forEach(cb => {
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = cb.value;
+        badge.title = 'Убрать';
+        badge.onclick = function() {
+            cb.checked = false;
+            updateSelectedTags(wrapper);
+        };
+        tagsDiv.appendChild(badge);
+    });
+    // Обновить текст кнопки
+    const btn = wrapper.querySelector('.dropdown-toggle');
+    if (checked.length) {
+        btn.textContent = Array.from(checked).map(cb => cb.value).join(', ');
+    } else {
+        btn.textContent = btn.getAttribute('data-placeholder') || 'Выбрать';
+    }
+}
+document.querySelectorAll('.dropdown-multicheck').forEach(wrapper => {
+    wrapper.querySelectorAll('.form-check-input').forEach(cb => {
+        cb.addEventListener('change', function() {
+            updateSelectedTags(wrapper);
+        });
+    });
+    // Инициализация
+    updateSelectedTags(wrapper);
+});
+
+// --- Слайдеры: отображение выбранного значения ---
+// JS: синхронизация слайдеров и select
+const postLengthSlider = document.getElementById('postLengthSlider');
+const postLengthSelect = document.getElementById('id_post_length');
+const postLengthLabels = ['Очень короткий', 'Короткий', 'Средний', 'Длинный'];
+if (postLengthSlider && postLengthSelect) {
+    // При изменении слайдера меняем select
+    postLengthSlider.addEventListener('input', function() {
+        postLengthSelect.value = postLengthLabels[postLengthSlider.value];
+        updatePostLengthLabel();
+    });
+    // При изменении select меняем слайдер
+    postLengthSelect.addEventListener('change', function() {
+        postLengthSlider.value = postLengthLabels.indexOf(postLengthSelect.value);
+        updatePostLengthLabel();
+    });
+    // Инициализация
+    postLengthSelect.value = postLengthLabels[postLengthSlider.value];
+    function updatePostLengthLabel() {
+        const labelDiv = postLengthSlider.nextElementSibling;
+        labelDiv.querySelectorAll('span').forEach((el, idx) => {
+            el.style.fontWeight = (idx == postLengthSlider.value) ? 'bold' : 'normal';
+            el.style.color = (idx == postLengthSlider.value) ? 'var(--neon-blue)' : 'var(--text-muted)';
+        });
+    }
+    updatePostLengthLabel();
+}
+const hashtagUsageSlider = document.getElementById('hashtagUsageSlider');
+const hashtagUsageSelect = document.getElementById('id_hashtag_usage');
+const hashtagUsageLabels = ['Без хэштегов', 'Минимум', 'Оптимально', 'Максимум'];
+if (hashtagUsageSlider && hashtagUsageSelect) {
+    hashtagUsageSlider.addEventListener('input', function() {
+        hashtagUsageSelect.value = hashtagUsageLabels[hashtagUsageSlider.value];
+        updateHashtagLabel();
+    });
+    hashtagUsageSelect.addEventListener('change', function() {
+        hashtagUsageSlider.value = hashtagUsageLabels.indexOf(hashtagUsageSelect.value);
+        updateHashtagLabel();
+    });
+    hashtagUsageSelect.value = hashtagUsageLabels[hashtagUsageSlider.value];
+    function updateHashtagLabel() {
+        const labelDiv = hashtagUsageSlider.nextElementSibling;
+        labelDiv.querySelectorAll('span').forEach((el, idx) => {
+            el.style.fontWeight = (idx == hashtagUsageSlider.value) ? 'bold' : 'normal';
+            el.style.color = (idx == hashtagUsageSlider.value) ? 'var(--neon-blue)' : 'var(--text-muted)';
+        });
+    }
+    updateHashtagLabel();
+}
+
+// JS: динамическое описание для ползунков
+const postLengthDescriptions = [
+    'Очень короткий (до 100 знаков)',
+    'Короткий (100–250 знаков)',
+    'Средний (250–500 знаков)',
+    'Длинный (500+ знаков)'
+];
+const hashtagUsageDescriptions = [
+    'Без хэштегов',
+    'Минимум (1–3 хэштега)',
+    'Оптимально (4–10 хэштегов)',
+    'Максимум (10+ хэштегов)'
+];
+function updatePostLengthDescription() {
+    const desc = document.getElementById('postLengthDescription');
+    desc.textContent = postLengthDescriptions[postLengthSlider.value];
+}
+function updateHashtagUsageDescription() {
+    const desc = document.getElementById('hashtagUsageDescription');
+    desc.textContent = hashtagUsageDescriptions[hashtagUsageSlider.value];
+}
+if (postLengthSlider) {
+    postLengthSlider.addEventListener('input', updatePostLengthDescription);
+    updatePostLengthDescription();
+}
+if (hashtagUsageSlider) {
+    hashtagUsageSlider.addEventListener('input', updateHashtagUsageDescription);
+    updateHashtagUsageDescription();
+}
+
+document.getElementById('resetFormBtn').onclick = function() {
+    const form = document.getElementById('generateForm');
+    form.reset();
+    // Сбросить все чекбоксы (в т.ч. мультиселекты)
+    form.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+    // Сбросить все selected у select-multiple
+    form.querySelectorAll('select[multiple]').forEach(sel => {
+        Array.from(sel.options).forEach(opt => opt.selected = false);
+    });
+    // Сбросить слайдеры к начальному значению (0)
+    const postLengthSlider = document.getElementById('postLengthSlider');
+    if (postLengthSlider) postLengthSlider.value = 0;
+    const hashtagUsageSlider = document.getElementById('hashtagUsageSlider');
+    if (hashtagUsageSlider) hashtagUsageSlider.value = 0;
+    // Обновить теги мультиселектов
+    document.querySelectorAll('.dropdown-multicheck').forEach(wrapper => {
+        if (typeof updateSelectedTags === 'function') updateSelectedTags(wrapper);
+    });
+    showToast('Форма очищена', 'info');
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    const openTemplateCardBtn = document.getElementById('openTemplateCard');
+    const templateCard = document.getElementById('templateCard');
+    const closeTemplateCardBtn = document.getElementById('closeTemplateCard');
+    const templateListCard = document.getElementById('templateListCard');
+
+    function openTemplateCard() {
+        templateCard.style.display = 'block';
+        document.body.appendChild(templateCard); // Добавляем в body для корректной работы
+        // Закрыть при клике вне меню
+        setTimeout(() => {
+            document.addEventListener('mousedown', onClickOutsideTemplateCard, { once: true });
+        }, 0);
+    }
+
+    function closeTemplateCard() {
+        templateCard.style.display = 'none';
+        templateCard.remove(); // Удаляем из body
+    }
+
+    function onClickOutsideTemplateCard(e) {
+        if (!templateCard.contains(e.target) && e.target !== openTemplateCardBtn) {
+            closeTemplateCard();
+        }
+    }
+
+    openTemplateCardBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        if (templateCard.parentElement === document.body) {
+            closeTemplateCard();
+        } else {
+            openTemplateCard();
+        }
+    });
+
+    closeTemplateCardBtn.addEventListener('click', closeTemplateCard);
+
+    // Закрытие при клике вне меню
+    document.addEventListener('mousedown', function(e) {
+        if (templateCard.style.display === 'block' && !templateCard.contains(e.target) && !openTemplateCardBtn.contains(e.target)) {
+            closeTemplateCard();
+        }
     });
 });
 </script>

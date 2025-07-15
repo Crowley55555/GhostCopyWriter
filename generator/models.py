@@ -18,9 +18,6 @@ class UserProfile(models.Model):
 
 class Generation(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='generations', null=True, blank=True)
-    platform = models.CharField(max_length=50)
-    template_type = models.CharField(max_length=50)
-    tone = models.CharField(max_length=50)
     topic = models.TextField()
     result = models.TextField()
     image_url = models.CharField(max_length=512, blank=True, null=True)
@@ -28,4 +25,20 @@ class Generation(models.Model):
 
     def __str__(self):
         return f"{self.user.username if self.user else 'Аноним'}: {self.topic[:30]}..."
+
+
+class GenerationTemplate(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='generation_templates')
+    name = models.CharField(max_length=100)
+    settings = models.JSONField()
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'name')
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.user.username}: {self.name}"
 
