@@ -488,94 +488,37 @@ html[data-theme="dark"] .btn-theme-toggle:hover {
 
 /* Карточки */
 .card {
-    border: none;
     border-radius: var(--border-radius);
-    transition: box-shadow 0.2s, border 0.2s, transform 0.2s;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    border: 1px solid #e3e6f0;
-    background: var(--bs-card-bg, #fff);
     animation: fadeInUp 0.8s ease-out both;
-    position: relative;
-}
-
-.card:nth-child(1) { animation-delay: 0.1s; }
-.card:nth-child(2) { animation-delay: 0.2s; }
-.card:nth-child(3) { animation-delay: 0.3s; }
-.card:nth-child(4) { animation-delay: 0.4s; }
-
-.card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-    transition: left 0.6s;
-}
-
-.card:hover::before {
-    left: 100%;
-}
-
-.card:hover, .card:focus-within {
-    box-shadow: 0 24px 64px rgba(13,110,253,0.32), 0 4px 24px rgba(13,110,253,0.18);
-    border: 3px solid var(--neon-blue, #0d6efd);
-    transform: translateY(-6px) scale(1.06);
-    z-index: 2;
 }
 
 .card-header {
-    border: none;
-    padding: 1.5rem;
-    font-weight: 600;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
     animation: fadeInUp 0.6s ease-out 0.3s both;
 }
 
 .card-body {
-    padding: 2rem;
-    background: var(--card-bg);
     animation: fadeInUp 0.6s ease-out 0.4s both;
 }
 
-/* Формы */
-.form-control, .form-select {
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 14px;
-    transition: var(--transition);
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    animation: scaleIn 0.6s ease-out both;
+.card-header.bg-primary {
+    background: var(--primary-gradient) !important;
+}
+.card-header.bg-success {
+    background: var(--success-gradient) !important;
+}
+.card-header.bg-info {
+    background: var(--info-gradient) !important;
+}
+.card-header.bg-warning {
+    background: var(--warning-gradient) !important;
+}
+.card-header.bg-dark {
+    background: var(--dark-gradient) !important;
 }
 
-.form-control:nth-child(1) { animation-delay: 0.1s; }
-.form-control:nth-child(2) { animation-delay: 0.2s; }
-.form-control:nth-child(3) { animation-delay: 0.3s; }
-.form-control:nth-child(4) { animation-delay: 0.4s; }
-
-.form-control:focus, .form-select:focus {
-    border-color: var(--neon-blue);
-    box-shadow: 0 0 0 0.2rem rgba(0, 212, 255, 0.25);
-    outline: none;
-    background: var(--bg-secondary);
-    transform: scale(1.02);
-}
-
-.form-label {
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 8px;
-    animation: fadeInLeft 0.6s ease-out both;
-}
-
-.form-text {
-    font-size: 13px;
-    color: var(--text-secondary);
-    animation: fadeInLeft 0.6s ease-out 0.2s both;
+/* Оставляю fade-in для плавного появления */
+.fade-in {
+    animation: fadeInUp 0.6s ease-out;
 }
 
 /* Кнопки */
@@ -1608,4 +1551,10 @@ html[data-theme="dark"] #templateCard, body.dark #templateCard {
 #templateCard .fw-bold {
     color: var(--neon-blue, #00d4ff);
     text-shadow: 0 0 8px var(--neon-blue, #00d4ff33);
+}
+
+.card:hover {
+    transform: scale(1.04);
+    z-index: 2;
+    transition: transform 0.2s cubic-bezier(0.4,0,0.2,1);
 }

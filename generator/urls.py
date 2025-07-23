@@ -8,4 +8,6 @@ urlpatterns = [
     path('delete-template/', views.delete_template_view, name='delete_template'),
     path('rename-template/', views.rename_template_view, name='rename_template'),
     path('set-default-template/', views.set_default_template_view, name='set_default_template'),
+    path('regenerate-text/', views.regenerate_text, name='regenerate_text'),
+    path('regenerate-image/', views.regenerate_image, name='regenerate_image'),
 ] 

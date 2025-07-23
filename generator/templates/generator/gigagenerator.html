@@ -303,6 +303,7 @@
                         </div>
                         <div class="card-body">
                             <div class="auto-resize-textarea" style="white-space: pre-line;">{{ result }}</div>
+                            <button id="regenTextBtn" class="btn btn-outline-primary mt-3 w-100" type="button">Перегенерировать текст</button>
                         </div>
                     </div>
                 </div>
@@ -315,6 +316,7 @@
                         </div>
                         <div class="card-body">
                             <img src="{{ image_url }}" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image" style="max-height: 320px; object-fit: contain;">
+                            <button id="regenImageBtn" class="btn btn-outline-info mt-3 w-100" type="button">Перегенерировать изображение</button>
                         </div>
                     </div>
                 </div>
@@ -439,11 +441,11 @@ form.addEventListener('submit', function(e) {
             setTimeout(() => showToast('Генерация изображения...', 'info'), 800);
             let html = '<div class="row mt-5">';
             if (data.result) {
-                html += `<div class=\"col-md-6 mb-4\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-success bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-file-text me-2\"></i>Сгенерированный текст</h5></div><div class=\"card-body\"><div class=\"auto-resize-textarea\" style=\"white-space: pre-line;\">${data.result}</div></div></div></div>`;
+                html += `<div class=\"col-md-6 mb-4\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-success bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-file-text me-2\"></i>Сгенерированный текст</h5></div><div class=\"card-body\"><div class=\"auto-resize-textarea\" style=\"white-space: pre-line;\">${data.result}</div><button id=\"regenTextBtn\" class=\"btn btn-outline-primary mt-3 w-100\" type=\"button\">Перегенерировать текст</button></div></div></div>`;
             }
             if (data.image_url) {
                 setTimeout(() => showToast('Изображение успешно сгенерировано!', 'success'), 1800);
-                html += `<div class=\"col-md-6 mb-4 text-center\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-info bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-image me-2\"></i>Сгенерированное изображение</h5></div><div class=\"card-body\"><img src=\"${data.image_url}\" alt=\"AI generated image\" class=\"img-fluid rounded shadow-sm generated-image\" style=\"max-height: 320px; object-fit: contain;\"></div></div></div>`;
+                html += `<div class=\"col-md-6 mb-4 text-center\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-info bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-image me-2\"></i>Сгенерированное изображение</h5></div><div class=\"card-body\"><img src=\"${data.image_url}\" alt=\"AI generated image\" class=\"img-fluid rounded shadow-sm generated-image\" style=\"max-height: 320px; object-fit: contain;\"><button id=\"regenImageBtn\" class=\"btn btn-outline-info mt-3 w-100\" type=\"button\">Перегенерировать изображение</button></div></div></div>`;
             }
             html += '</div>';
             resultBlock.innerHTML = html;
@@ -482,6 +484,87 @@ function showToast(msg, type='info') {
         alert(msg);
     }
 }
+
+// --- Перегенерация текста и изображения ---
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'regenTextBtn') {
+        const topicInput = document.querySelector('[name="topic"]');
+        const topic = topicInput ? topicInput.value : '';
+        if (!topic) {
+            showToast('Тема не указана', 'danger');
+            return;
+        }
+        e.target.disabled = true;
+        showToast('Перегенерация текста...', 'info');
+        fetch('/regenerate-text/', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || ''
+            },
+            body: `topic=${encodeURIComponent(topic)}`
+        })
+        .then(resp => resp.json())
+        .then(data => {
+            e.target.disabled = false;
+            if (data.success) {
+                showToast('Текст успешно перегенерирован!', 'success');
+                // Обновить только текстовую карточку
+                const textCard = e.target.closest('.card-body');
+                if (textCard) {
+                    textCard.querySelector('.auto-resize-textarea').textContent = data.result;
+                }
+            } else {
+                showToast(data.error || 'Ошибка при перегенерации текста', 'danger');
+            }
+        })
+        .catch(() => {
+            e.target.disabled = false;
+            showToast('Ошибка: Не удалось перегенерировать текст.', 'danger');
+        });
+    }
+    if (e.target && e.target.id === 'regenImageBtn') {
+        const topicInput = document.querySelector('[name="topic"]');
+        const topic = topicInput ? topicInput.value : '';
+        if (!topic) {
+            showToast('Тема не указана', 'danger');
+            return;
+        }
+        e.target.disabled = true;
+        showToast('Перегенерация изображения...', 'info');
+        fetch('/regenerate-image/', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || ''
+            },
+            body: `topic=${encodeURIComponent(topic)}`
+        })
+        .then(resp => resp.json())
+        .then(data => {
+            e.target.disabled = false;
+            if (data.success) {
+                showToast('Изображение успешно перегенерировано!', 'success');
+                // Обновить только картинку
+                const imageCard = e.target.closest('.card-body');
+                if (imageCard) {
+                    const img = imageCard.querySelector('img.generated-image');
+                    if (img) {
+                        img.src = data.image_url;
+                    }
+                }
+            } else {
+                showToast(data.error || 'Ошибка при перегенерации изображения', 'danger');
+            }
+        })
+        .catch(() => {
+            e.target.disabled = false;
+            showToast('Ошибка: Не удалось перегенерировать изображение.', 'danger');
+        });
+    }
+});
 
 // --- Шаблоны генератора ---
 let currentTemplateId = null;

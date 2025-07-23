@@ -93,6 +93,7 @@ def generator_view(request):
                 return JsonResponse({'success': False, 'error': 'Некорректно заполнена форма', 'form_errors': errors})
     return render(request, 'generator/gigagenerator.html', {'form': form, 'result': result, 'image_url': image_url, 'limit_reached': limit_reached})
 
+@csrf_exempt
 def regenerate_text(request):
     """Перегенерация только текста"""
     if request.method == 'POST':
@@ -133,6 +134,7 @@ def regenerate_text(request):
         'error': 'Метод не поддерживается'
     })
 
+@csrf_exempt
 def regenerate_image(request):
     """Перегенерация только изображения"""
     if request.method == 'POST':
