@@ -147,8 +147,19 @@ def regenerate_image(request):
                     'error': 'Тема не предоставлена'
                 })
             
-            # Генерируем новое изображение
-            image_data = generate_image_gigachat(topic)
+            try:
+                from .gigachat_api import generate_image_prompt_from_text
+                # Создаём промпт на основе темы. В качестве "текста" передаём тему, а form_data пустой
+                image_prompt = generate_image_prompt_from_text(topic, {}) if callable(generate_image_prompt_from_text) else None
+            except Exception:
+                image_prompt = None
+
+            # Если не удалось сгенерировать промпт, используем простое описание
+            if not image_prompt:
+                image_prompt = f"Сделай яркую иллюстрацию для социальной сети на тему: '{topic}'. Стиль: цифровая живопись, яркие цвета."
+
+            # Запускаем генерацию изображения
+            image_data = generate_image_gigachat(image_prompt)
             
             if image_data:
                 print(f"Тип image_data: {type(image_data)}")
@@ -224,7 +235,7 @@ def regenerate_image(request):
             else:
                 return JsonResponse({
                     'success': False,
-                    'error': 'Не удалось сгенерировать изображение'
+                    'error': 'GigaChat вернул текст без изображения. Попробуйте изменить тему или повторить позже.'
                 })
             
         except Exception as e:

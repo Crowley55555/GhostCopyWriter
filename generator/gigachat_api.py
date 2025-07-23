@@ -489,6 +489,11 @@ def generate_image_gigachat(image_prompt):
         response = giga.chat(payload)
         response_content = response.choices[0].message.content
         print("GigaChat image response:", response_content)
+        # Если ответ уже содержит готовое base64 изображение, возвращаем его напрямую
+        if isinstance(response_content, str) and response_content.strip().startswith("data:image"):
+            print("Получено готовое base64 изображение от GigaChat")
+            return response_content.strip()
+        
         file_id = extract_image_id(response_content)
         if file_id:
             image_data = download_image(giga, file_id)
@@ -510,6 +515,17 @@ def generate_image_gigachat(image_prompt):
 def extract_image_id(response_content):
     """Извлекает ID изображения из HTML-ответа GigaChat"""
     try:
+        # 0. Если ответ уже содержит data:image -> возврат целиком
+        if isinstance(response_content, str) and response_content.strip().startswith("data:image"):
+            print("Ответ уже содержит data:image — возвращаем как есть")
+            return response_content.strip()
+        
+        # 0.1 Если это длинная base64 строка без префикса
+        base64_candidate = response_content.strip().replace("\n", "")
+        if len(base64_candidate) > 1000 and re.fullmatch(r'[A-Za-z0-9+/=]+', base64_candidate):
+            print("Ответ выглядит как чистая base64 строка — возвращаем с префиксом")
+            return f"data:image/jpeg;base64,{base64_candidate}"
+        
         # Парсим HTML с помощью BeautifulSoup
         soup = BeautifulSoup(response_content, "html.parser")
         img_tag = soup.find('img')
@@ -519,13 +535,41 @@ def extract_image_id(response_content):
             print(f"Извлечен ID изображения: {file_id}")
             return file_id
         else:
-            # Альтернативный способ через регулярные выражения
+            # 1. Поиск тега <img src="...">
             match = re.search(r'<img[^>]*src="([^"]+)"', response_content)
             if match:
                 file_id = match.group(1)
-                print(f"Извлечен ID изображения (regex): {file_id}")
+                print(f"Извлечен ID изображения (regex img): {file_id}")
                 return file_id
-                
+            
+            # 2. Поиск markdown вида ![alt](file_id)
+            match_md = re.search(r'!\[[^\]]*\]\(([^)]+)\)', response_content)
+            if match_md:
+                file_id = match_md.group(1)
+                print(f"Извлечен ID изображения (markdown): {file_id}")
+                return file_id
+            
+            # 3. Поиск UUID в тексте
+            match_uuid = re.search(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', response_content)
+            if match_uuid:
+                file_id = match_uuid.group(0)
+                print(f"Извлечен ID изображения (uuid): {file_id}")
+                return file_id
+        
+        # 4. Поиск JSON-подобного "fileId":"..." или "file_id":"..."
+        match_json = re.search(r'"(?:fileId|file_id)"\s*:\s*"([^"]+)"', response_content)
+        if match_json:
+            file_id = match_json.group(1)
+            print(f"Извлечен ID изображения (json): {file_id}")
+            return file_id
+        
+        # 5. Поиск первой http/https ссылки
+        match_http = re.search(r'(https?://[^\s"\'<>]+)', response_content)
+        if match_http:
+            file_id = match_http.group(1)
+            print(f"Извлечен ID изображения (http): {file_id}")
+            return file_id
+        
         print("Не найден тег img в ответе")
         return None
         
@@ -536,6 +580,25 @@ def extract_image_id(response_content):
 def download_image(giga_client, file_id):
     """Скачивает изображение по ID и возвращает base64 данные"""
     try:
+        # Если пришла уже готовая строка data:image — вернуть сразу
+        if isinstance(file_id, str) and file_id.startswith("data:image"):
+            print("file_id уже является data:image — возвращаем")
+            return file_id
+        
+        # Если это ссылка http/https — скачать напрямую без авторизации
+        if isinstance(file_id, str) and file_id.startswith("http"):
+            print("file_id является полной ссылкой — скачиваем через requests")
+            import requests, base64
+            try:
+                resp = requests.get(file_id, timeout=20, verify=False)
+                if resp.status_code == 200:
+                    image_base64 = base64.b64encode(resp.content).decode('utf-8')
+                    return f"data:image/jpeg;base64,{image_base64}"
+                else:
+                    print(f"Не удалось скачать изображение по ссылке, код: {resp.status_code}")
+            except Exception as ex:
+                print(f"Ошибка скачивания по ссылке: {ex}")
+        
         print(f"Скачиваем изображение с ID: {file_id}")
         image_response = giga_client.get_image(file_id)
         
