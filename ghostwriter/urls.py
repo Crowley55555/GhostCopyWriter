@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.urls import path
+from django.urls import path, include
 from generator import views
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -34,6 +34,7 @@ urlpatterns = [
     path('delete-generation/<int:gen_id>/', views.delete_generation_view, name='delete_generation'),
     path('generation/<int:gen_id>/', views.generation_detail_view, name='generation_detail'),
     path('agreement/', views.agreement_view, name='user_agreement'),
+    path('api/', include('generator.urls')),
 ]
 
 # В режиме DEBUG:

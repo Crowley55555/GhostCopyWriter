@@ -16,132 +16,125 @@ from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime
+from django.views.decorators.http import require_POST, require_GET
+from django.contrib.auth.decorators import login_required
+from .models import GenerationTemplate
+from django.views.decorators.csrf import csrf_exempt
+from django.forms.models import model_to_dict
 
 def generator_view(request):
     result = None
     image_url = None
     limit_reached = False
     form = GenerationForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
+    if request.method == 'POST':
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-        try:
-            # Получаем данные из формы
-            platform = form.cleaned_data['platform']
-            template_type = form.cleaned_data['template_type']
-            tone = form.cleaned_data['tone']
-            topic = form.cleaned_data['topic']
-            form_data = {
-                'platform': platform,
-                'template_type': template_type,
-                'tone': tone,
-                'topic': topic
-            }
-            # Генерируем текст
-            result = generate_text(form_data)
-            # Генерируем изображение
-            image_data = generate_image_gigachat(topic)
-            # Обрабатываем изображение
-            if image_data:
-                if image_data.startswith("data:image"):
-                    import uuid
-                    filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
-                    full_path = os.path.join(settings.MEDIA_ROOT, filename)
-                    os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-                    base64_data = image_data.split(',')[1]
-                    image_bytes = base64.b64decode(base64_data)
-                    with open(full_path, "wb") as f:
-                        f.write(image_bytes)
-                    image_url = settings.MEDIA_URL + filename
-                elif image_data.startswith("http"):
-                    image_url = image_data
+        if form.is_valid():
+            try:
+                # Получаем все данные из формы
+                form_data = form.cleaned_data.copy()
+                # Генерируем текст
+                result = generate_text(form_data)
+                # Новый пайплайн: генерируем промпт для изображения на основе текста
+                from .gigachat_api import generate_image_prompt_from_text
+                image_prompt = generate_image_prompt_from_text(result, form_data) if result else None
+                # Генерируем изображение по новому промпту, если он есть, иначе по теме
+                if image_prompt:
+                    image_data = generate_image_gigachat(image_prompt)
                 else:
-                    filename = f"generated_{topic[:20].replace(' ', '_')}.jpg"
-                    full_path = os.path.join(settings.MEDIA_ROOT, filename)
-                    os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-                    try:
-                        image_bytes = base64.b64decode(image_data)
+                    image_data = generate_image_gigachat(form_data.get('topic', ''))
+                # Обрабатываем изображение
+                if image_data:
+                    if image_data.startswith("data:image"):
+                        import uuid
+                        filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
+                        full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                        base64_data = image_data.split(',')[1]
+                        image_bytes = base64.b64decode(base64_data)
                         with open(full_path, "wb") as f:
                             f.write(image_bytes)
                         image_url = settings.MEDIA_URL + filename
-                    except Exception as e:
-                        image_url = None
-            # Сохраняем результат в базу с image_url
-            gen = Generation.objects.create(
-                user=request.user if request.user.is_authenticated else None,
-                platform=platform,
-                template_type=template_type,
-                tone=tone,
-                topic=topic,
-                result=result,
-                image_url=image_url or ""
-            )
+                    elif image_data.startswith("http"):
+                        image_url = image_data
+                    else:
+                        filename = f"generated_{form_data.get('topic', '')[:20].replace(' ', '_')}.jpg"
+                        full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                        try:
+                            image_bytes = base64.b64decode(image_data)
+                            with open(full_path, "wb") as f:
+                                f.write(image_bytes)
+                            image_url = settings.MEDIA_URL + filename
+                        except Exception as e:
+                            image_url = None
+                # Сохраняем результат в базу с image_url
+                gen = Generation.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    topic=form_data.get('topic', ''),
+                    result=result,
+                    image_url=image_url or ""
+                )
+                if is_ajax:
+                    return JsonResponse({
+                        'success': True,
+                        'result': result,
+                        'image_url': image_url,
+                        'limit_reached': limit_reached
+                    })
+            except Exception as e:
+                print(f"Ошибка генерации: {e}")
+                if is_ajax:
+                    return JsonResponse({'success': False, 'error': str(e)})
+        else:
             if is_ajax:
-                return JsonResponse({
-                    'success': True,
-                    'result': result,
-                    'image_url': image_url,
-                    'limit_reached': limit_reached
-                })
-        except Exception as e:
-            print(f"Ошибка генерации: {e}")
-            if is_ajax:
-                return JsonResponse({'success': False, 'error': str(e)})
+                # Собираем ошибки формы для фронта
+                errors = {field: [str(err) for err in errs] for field, errs in form.errors.items()}
+                return JsonResponse({'success': False, 'error': 'Некорректно заполнена форма', 'form_errors': errors})
     return render(request, 'generator/gigagenerator.html', {'form': form, 'result': result, 'image_url': image_url, 'limit_reached': limit_reached})
 
+@csrf_exempt
 def regenerate_text(request):
     """Перегенерация только текста"""
     if request.method == 'POST':
         try:
             # Получаем данные из формы
-            platform = request.POST.get('platform')
-            template_type = request.POST.get('template_type')
-            tone = request.POST.get('tone')
             topic = request.POST.get('topic')
-            
-            if not all([platform, template_type, tone, topic]):
+            # Здесь можно добавить обработку новых критериев, если нужно
+            if not topic:
                 return JsonResponse({
                     'success': False,
                     'error': 'Не все необходимые данные предоставлены'
                 })
-            
             # Создаем словарь с данными для генерации
             form_data = {
-                'platform': platform,
-                'template_type': template_type,
-                'tone': tone,
                 'topic': topic
+                # Добавить новые критерии, если нужно
             }
-            
             # Генерируем новый текст
             result = generate_text(form_data)
-            
             # Сохраняем в базу
             Generation.objects.create(
-                platform=platform,
-                template_type=template_type,
-                tone=tone,
                 topic=topic,
                 result=result,
             )
-            
             return JsonResponse({
                 'success': True,
                 'result': result,
                 'message': 'Текст успешно перегенерирован'
             })
-            
         except Exception as e:
             print(f"Ошибка при перегенерации текста: {e}")
             return JsonResponse({
                 'success': False,
                 'error': str(e)
             })
-    
     return JsonResponse({
         'success': False,
         'error': 'Метод не поддерживается'
     })
 
+@csrf_exempt
 def regenerate_image(request):
     """Перегенерация только изображения"""
     if request.method == 'POST':
@@ -154,8 +147,19 @@ def regenerate_image(request):
                     'error': 'Тема не предоставлена'
                 })
             
-            # Генерируем новое изображение
-            image_data = generate_image_gigachat(topic)
+            try:
+                from .gigachat_api import generate_image_prompt_from_text
+                # Создаём промпт на основе темы. В качестве "текста" передаём тему, а form_data пустой
+                image_prompt = generate_image_prompt_from_text(topic, {}) if callable(generate_image_prompt_from_text) else None
+            except Exception:
+                image_prompt = None
+
+            # Если не удалось сгенерировать промпт, используем простое описание
+            if not image_prompt:
+                image_prompt = f"Сделай яркую иллюстрацию для социальной сети на тему: '{topic}'. Стиль: цифровая живопись, яркие цвета."
+
+            # Запускаем генерацию изображения
+            image_data = generate_image_gigachat(image_prompt)
             
             if image_data:
                 print(f"Тип image_data: {type(image_data)}")
@@ -231,7 +235,7 @@ def regenerate_image(request):
             else:
                 return JsonResponse({
                     'success': False,
-                    'error': 'Не удалось сгенерировать изображение'
+                    'error': 'GigaChat вернул текст без изображения. Попробуйте изменить тему или повторить позже.'
                 })
             
         except Exception as e:
@@ -355,3 +359,99 @@ def delete_generation_view(request, gen_id):
 def generation_detail_view(request, gen_id):
     gen = get_object_or_404(Generation, id=gen_id, user=request.user)
     return render(request, 'generator/generation_detail.html', {'gen': gen})
+
+# --- API для шаблонов генератора ---
+@login_required
+@require_POST
+def save_template_view(request):
+    import json
+    data = json.loads(request.body.decode('utf-8'))
+    name = data.get('name', '').strip()
+    settings = data.get('settings', {})
+    is_default = data.get('is_default', False)
+    if not name or not isinstance(settings, dict):
+        return JsonResponse({'success': False, 'error': 'Некорректные данные'})
+    # Проверка уникальности имени
+    if GenerationTemplate.objects.filter(user=request.user, name=name).exists():
+        return JsonResponse({'success': False, 'error': 'Шаблон с таким именем уже существует'})
+    # Если is_default, сбросить другие шаблоны
+    if is_default:
+        GenerationTemplate.objects.filter(user=request.user, is_default=True).update(is_default=False)
+    template = GenerationTemplate.objects.create(
+        user=request.user,
+        name=name,
+        settings=settings,
+        is_default=is_default
+    )
+    return JsonResponse({'success': True, 'template_id': template.id})
+
+@login_required
+@require_GET
+def get_templates_view(request):
+    templates = GenerationTemplate.objects.filter(user=request.user).order_by('-updated_at')
+    result = [
+        {
+            'id': t.id,
+            'name': t.name,
+            'is_default': t.is_default,
+            'updated_at': t.updated_at.strftime('%Y-%m-%d %H:%M'),
+        } for t in templates
+    ]
+    return JsonResponse({'success': True, 'templates': result})
+
+@login_required
+@require_GET
+def load_template_view(request):
+    template_id = request.GET.get('id')
+    try:
+        template = GenerationTemplate.objects.get(user=request.user, id=template_id)
+        return JsonResponse({'success': True, 'settings': template.settings, 'name': template.name, 'is_default': template.is_default})
+    except GenerationTemplate.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Шаблон не найден'})
+
+@login_required
+@require_POST
+def delete_template_view(request):
+    import json
+    data = json.loads(request.body.decode('utf-8'))
+    template_id = data.get('id')
+    try:
+        template = GenerationTemplate.objects.get(user=request.user, id=template_id)
+        template.delete()
+        return JsonResponse({'success': True})
+    except GenerationTemplate.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Шаблон не найден'})
+
+@login_required
+@require_POST
+def rename_template_view(request):
+    import json
+    data = json.loads(request.body.decode('utf-8'))
+    template_id = data.get('id')
+    new_name = data.get('new_name', '').strip()
+    if not new_name:
+        return JsonResponse({'success': False, 'error': 'Новое имя не указано'})
+    if GenerationTemplate.objects.filter(user=request.user, name=new_name).exclude(id=template_id).exists():
+        return JsonResponse({'success': False, 'error': 'Шаблон с таким именем уже существует'})
+    try:
+        template = GenerationTemplate.objects.get(user=request.user, id=template_id)
+        template.name = new_name
+        template.save()
+        return JsonResponse({'success': True})
+    except GenerationTemplate.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Шаблон не найден'})
+
+@login_required
+@require_POST
+def set_default_template_view(request):
+    import json
+    data = json.loads(request.body.decode('utf-8'))
+    template_id = data.get('id')
+    try:
+        template = GenerationTemplate.objects.get(user=request.user, id=template_id)
+        GenerationTemplate.objects.filter(user=request.user, is_default=True).update(is_default=False)
+        template.is_default = True
+        template.save()
+        return JsonResponse({'success': True})
+    except GenerationTemplate.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Шаблон не найден'})
