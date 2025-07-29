@@ -21,54 +21,58 @@ from django.contrib.auth.decorators import login_required
 from .models import GenerationTemplate
 from django.views.decorators.csrf import csrf_exempt
 from django.forms.models import model_to_dict
+from .fastapi_client import generate_text_and_prompt, generate_image
 
 def generator_view(request):
     result = None
     image_url = None
     limit_reached = False
     form = GenerationForm(request.POST or None)
+    generator_type = request.POST.get('generator_type', 'gigachat')  # Новый параметр
     if request.method == 'POST':
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         if form.is_valid():
             try:
-                # Получаем все данные из формы
                 form_data = form.cleaned_data.copy()
-                # Генерируем текст
-                result = generate_text(form_data)
-                # Новый пайплайн: генерируем промпт для изображения на основе текста
-                from .gigachat_api import generate_image_prompt_from_text
-                image_prompt = generate_image_prompt_from_text(result, form_data) if result else None
-                # Генерируем изображение по новому промпту, если он есть, иначе по теме
-                if image_prompt:
-                    image_data = generate_image_gigachat(image_prompt)
+                if generator_type == 'openai':
+                    # Новый генератор через FastAPI
+                    gen_result = generate_text_and_prompt(form_data)
+                    result = gen_result.get('text')
+                    image_prompt = gen_result.get('image_prompt')
+                    image_url = generate_image(image_prompt) if image_prompt else None
                 else:
-                    image_data = generate_image_gigachat(form_data.get('topic', ''))
-                # Обрабатываем изображение
-                if image_data:
-                    if image_data.startswith("data:image"):
-                        import uuid
-                        filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
-                        full_path = os.path.join(settings.MEDIA_ROOT, filename)
-                        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-                        base64_data = image_data.split(',')[1]
-                        image_bytes = base64.b64decode(base64_data)
-                        with open(full_path, "wb") as f:
-                            f.write(image_bytes)
-                        image_url = settings.MEDIA_URL + filename
-                    elif image_data.startswith("http"):
-                        image_url = image_data
+                    # Старый генератор Gigachat
+                    result = generate_text(form_data)
+                    from .gigachat_api import generate_image_prompt_from_text
+                    image_prompt = generate_image_prompt_from_text(result, form_data) if result else None
+                    if image_prompt:
+                        image_data = generate_image_gigachat(image_prompt)
                     else:
-                        filename = f"generated_{form_data.get('topic', '')[:20].replace(' ', '_')}.jpg"
-                        full_path = os.path.join(settings.MEDIA_ROOT, filename)
-                        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-                        try:
-                            image_bytes = base64.b64decode(image_data)
+                        image_data = generate_image_gigachat(form_data.get('topic', ''))
+                    if image_data:
+                        if image_data.startswith("data:image"):
+                            import uuid
+                            filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
+                            full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                            os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                            base64_data = image_data.split(',')[1]
+                            image_bytes = base64.b64decode(base64_data)
                             with open(full_path, "wb") as f:
                                 f.write(image_bytes)
                             image_url = settings.MEDIA_URL + filename
-                        except Exception as e:
-                            image_url = None
-                # Сохраняем результат в базу с image_url
+                        elif image_data.startswith("http"):
+                            image_url = image_data
+                        else:
+                            filename = f"generated_{form_data.get('topic', '')[:20].replace(' ', '_')}.jpg"
+                            full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                            os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                            try:
+                                image_bytes = base64.b64decode(image_data)
+                                with open(full_path, "wb") as f:
+                                    f.write(image_bytes)
+                                image_url = settings.MEDIA_URL + filename
+                            except Exception as e:
+                                image_url = None
                 gen = Generation.objects.create(
                     user=request.user if request.user.is_authenticated else None,
                     topic=form_data.get('topic', ''),
@@ -88,7 +92,6 @@ def generator_view(request):
                     return JsonResponse({'success': False, 'error': str(e)})
         else:
             if is_ajax:
-                # Собираем ошибки формы для фронта
                 errors = {field: [str(err) for err in errs] for field, errs in form.errors.items()}
                 return JsonResponse({'success': False, 'error': 'Некорректно заполнена форма', 'form_errors': errors})
     return render(request, 'generator/gigagenerator.html', {'form': form, 'result': result, 'image_url': image_url, 'limit_reached': limit_reached})
