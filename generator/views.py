@@ -22,6 +22,86 @@ from .models import GenerationTemplate
 from django.views.decorators.csrf import csrf_exempt
 from django.forms.models import model_to_dict
 from .fastapi_client import generate_text_and_prompt, generate_image
+import requests
+
+def check_flask_api_status():
+    """Проверяет доступность Flask API"""
+    try:
+        flask_url = os.environ.get('FLASK_GEN_URL', 'http://localhost:5000')
+        response = requests.get(f"{flask_url}/", timeout=2)
+        return True
+    except Exception as e:
+        print(f"Flask API недоступен: {e}")
+        return False
+
+
+def quick_login(request, username):
+    """Быстрый вход для тестовых пользователей"""
+    if request.method == 'POST':
+        try:
+            # Проверяем, что это тестовый пользователь
+            if username in ['admin', 'test_user_1', 'test_user_2']:
+                try:
+                    user = User.objects.get(username=username)
+                except User.DoesNotExist:
+                    # Создаем пользователя, если его нет
+                    if username == 'admin':
+                        user = User.objects.create_superuser(
+                            username='admin',
+                            email='admin@example.com',
+                            password='admin123',
+                            first_name='Администратор',
+                            last_name='Системы'
+                        )
+                    elif username == 'test_user_1':
+                        user = User.objects.create_user(
+                            username='test_user_1',
+                            email='test1@example.com',
+                            password='test123',
+                            first_name='Анна',
+                            last_name='Петрова'
+                        )
+                        # Создаем профиль
+                        from .models import UserProfile
+                        UserProfile.objects.get_or_create(
+                            user=user,
+                            defaults={
+                                'city': 'Москва',
+                                'bio': 'Тестовый пользователь для разработки. Специалист по контент-маркетингу.'
+                            }
+                        )
+                    elif username == 'test_user_2':
+                        user = User.objects.create_user(
+                            username='test_user_2',
+                            email='test2@example.com',
+                            password='test123',
+                            first_name='Михаил',
+                            last_name='Сидоров'
+                        )
+                        # Создаем профиль
+                        from .models import UserProfile
+                        UserProfile.objects.get_or_create(
+                            user=user,
+                            defaults={
+                                'city': 'Санкт-Петербург',
+                                'bio': 'Второй тестовый пользователь для разработки. SMM-менеджер.'
+                            }
+                        )
+                
+                login(request, user)
+                messages.success(request, f'Добро пожаловать, {user.first_name or user.username}!')
+                
+                # Разные редиректы для разных пользователей
+                if username == 'admin':
+                    return redirect('/admin/')
+                else:
+                    return redirect('profile')  # Личный кабинет пользователя
+            else:
+                messages.error(request, 'Неверный пользователь для быстрого входа')
+        except Exception as e:
+            messages.error(request, f'Ошибка входа: {str(e)}')
+    
+    return redirect('login')
 
 def generator_view(request):
     result = None
@@ -35,11 +115,33 @@ def generator_view(request):
             try:
                 form_data = form.cleaned_data.copy()
                 if generator_type == 'openai':
-                    # Новый генератор через FastAPI
-                    gen_result = generate_text_and_prompt(form_data)
-                    result = gen_result.get('text')
-                    image_prompt = gen_result.get('image_prompt')
-                    image_url = generate_image(image_prompt) if image_prompt else None
+                    # Проверяем доступность Flask API
+                    if not check_flask_api_status():
+                        if is_ajax:
+                            return JsonResponse({
+                                'success': False, 
+                                'error': 'Flask Generator не запущен. Запустите Flask приложение на порту 5000.'
+                            })
+                        else:
+                            result = "❌ Flask Generator не запущен. Запустите Flask приложение на порту 5000."
+                            image_url = None
+                    else:
+                        try:
+                            # Генератор через Flask API
+                            gen_result = generate_text_and_prompt(form_data)
+                            result = gen_result.get('text')
+                            image_prompt = gen_result.get('image_prompt')
+                            image_url = generate_image(image_prompt) if image_prompt else None
+                        except Exception as e:
+                            print(f"Ошибка Flask API: {e}")
+                            if is_ajax:
+                                return JsonResponse({
+                                    'success': False, 
+                                    'error': f'Ошибка Flask API: {str(e)}'
+                                })
+                            else:
+                                result = f"❌ Ошибка Flask API: {str(e)}"
+                                image_url = None
                 else:
                     # Старый генератор Gigachat
                     result = generate_text(form_data)
@@ -79,12 +181,15 @@ def generator_view(request):
                     result=result,
                     image_url=image_url or ""
                 )
+                # Сохраняем ID генерации в сессии для последующих перегенераций
+                request.session['current_generation_id'] = gen.id
                 if is_ajax:
                     return JsonResponse({
                         'success': True,
                         'result': result,
                         'image_url': image_url,
-                        'limit_reached': limit_reached
+                        'limit_reached': limit_reached,
+                        'generation_id': gen.id
                     })
             except Exception as e:
                 print(f"Ошибка генерации: {e}")
@@ -116,11 +221,33 @@ def regenerate_text(request):
             }
             # Генерируем новый текст
             result = generate_text(form_data)
-            # Сохраняем в базу
-            Generation.objects.create(
-                topic=topic,
-                result=result,
-            )
+            
+            # Обновляем существующую запись или создаем новую
+            generation_id = request.session.get('current_generation_id')
+            if generation_id:
+                try:
+                    gen = Generation.objects.get(id=generation_id)
+                    # Добавляем разделитель и новый текст
+                    gen.result += f"\n\n--- Перегенерация {gen.result.count('--- Перегенерация') + 1} ---\n\n{result}"
+                    gen.save()
+                except Generation.DoesNotExist:
+                    # Если запись не найдена, создаем новую
+                    gen = Generation.objects.create(
+                        user=request.user if request.user.is_authenticated else None,
+                        topic=topic,
+                        result=result,
+                        image_url=""
+                    )
+                    request.session['current_generation_id'] = gen.id
+            else:
+                # Создаем новую запись, если нет ID в сессии
+                gen = Generation.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    topic=topic,
+                    result=result,
+                    image_url=""
+                )
+                request.session['current_generation_id'] = gen.id
             return JsonResponse({
                 'success': True,
                 'result': result,
@@ -136,6 +263,39 @@ def regenerate_text(request):
         'success': False,
         'error': 'Метод не поддерживается'
     })
+
+def update_generation_image(request, topic, image_url):
+    """Вспомогательная функция для обновления изображения в генерации"""
+    generation_id = request.session.get('current_generation_id')
+    if generation_id:
+        try:
+            gen = Generation.objects.get(id=generation_id)
+            # Если уже есть изображения, добавляем разделитель
+            if gen.image_url:
+                # Подсчитываем количество существующих изображений
+                image_count = gen.image_url.count('|') + 1 if gen.image_url else 0
+                gen.image_url += f"|{image_url}"
+            else:
+                gen.image_url = image_url
+            gen.save()
+        except Generation.DoesNotExist:
+            # Если запись не найдена, создаем новую
+            gen = Generation.objects.create(
+                user=request.user if request.user.is_authenticated else None,
+                topic=topic,
+                result="",
+                image_url=image_url
+            )
+            request.session['current_generation_id'] = gen.id
+    else:
+        # Создаем новую запись, если нет ID в сессии
+        gen = Generation.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            topic=topic,
+            result="",
+            image_url=image_url
+        )
+        request.session['current_generation_id'] = gen.id
 
 @csrf_exempt
 def regenerate_image(request):
@@ -189,6 +349,9 @@ def regenerate_image(request):
                         print(f"Изображение сохранено локально: {image_url}")
                         print(f"Размер файла: {len(image_bytes)} байт")
                         
+                        # Обновляем изображение в существующей записи
+                        update_generation_image(request, topic, image_url)
+                        
                         return JsonResponse({
                             'success': True,
                             'image_url': image_url,
@@ -198,6 +361,9 @@ def regenerate_image(request):
                     except Exception as e:
                         print(f"Ошибка при сохранении base64 изображения: {e}")
                         # Возвращаемся к base64 как fallback
+                        # Обновляем изображение в существующей записи
+                        update_generation_image(request, topic, image_data)
+                        
                         return JsonResponse({
                             'success': True,
                             'image_url': image_data,
@@ -205,6 +371,9 @@ def regenerate_image(request):
                         })
                 elif image_data.startswith("http"):
                     # Это URL (если вдруг вернется)
+                    # Обновляем изображение в существующей записи
+                    update_generation_image(request, topic, image_data)
+                    
                     return JsonResponse({
                         'success': True,
                         'image_url': image_data,
@@ -223,6 +392,9 @@ def regenerate_image(request):
                             f.write(image_bytes)
                         image_url = settings.MEDIA_URL + filename
                         print(f"Изображение сохранено локально: {image_url}")
+                        
+                        # Обновляем изображение в существующей записи
+                        update_generation_image(request, topic, image_url)
                         
                         return JsonResponse({
                             'success': True,

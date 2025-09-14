@@ -282,9 +282,9 @@
   <label class="form-label"><i class="bi bi-cpu me-1"></i>Выбор генератора</label>
   <div class="btn-group w-100" role="group" aria-label="Выбор генератора">
     <input type="radio" class="btn-check" name="generator_type" id="genTypeGigachat" value="gigachat" autocomplete="off" checked>
-    <label class="btn btn-outline-primary" for="genTypeGigachat"><i class="bi bi-robot"></i> Gigachat</label>
+    <label class="btn btn-outline-primary" for="genTypeGigachat" id="labelGigachat"><i class="bi bi-robot"></i> Gigachat</label>
     <input type="radio" class="btn-check" name="generator_type" id="genTypeOpenAI" value="openai" autocomplete="off">
-    <label class="btn btn-outline-success" for="genTypeOpenAI"><i class="bi bi-lightning-charge"></i> OpenAI + Midjourney</label>
+    <label class="btn btn-outline-success" for="genTypeOpenAI" id="labelOpenAI"><i class="bi bi-lightning-charge"></i> OpenAI + Midjourney</label>
   </div>
 </div>
                         </div>
@@ -811,7 +811,42 @@ function setDefaultTemplate(id) {
 // --- Автозагрузка шаблонов при старте ---
 document.addEventListener('DOMContentLoaded', function() {
     fetchTemplates();
+    
+    // Инициализация подсветки выбранного генератора
+    updateGeneratorSelection();
 });
+
+// --- Подсветка выбранного генератора ---
+function updateGeneratorSelection() {
+    const gigachatRadio = document.getElementById('genTypeGigachat');
+    const openaiRadio = document.getElementById('genTypeOpenAI');
+    const gigachatLabel = document.getElementById('labelGigachat');
+    const openaiLabel = document.getElementById('labelOpenAI');
+    
+    if (gigachatRadio && openaiRadio && gigachatLabel && openaiLabel) {
+        // Функция для обновления стилей
+        function updateStyles() {
+            if (gigachatRadio.checked) {
+                gigachatLabel.classList.remove('btn-outline-primary');
+                gigachatLabel.classList.add('btn-primary');
+                openaiLabel.classList.remove('btn-success');
+                openaiLabel.classList.add('btn-outline-success');
+            } else if (openaiRadio.checked) {
+                openaiLabel.classList.remove('btn-outline-success');
+                openaiLabel.classList.add('btn-success');
+                gigachatLabel.classList.remove('btn-primary');
+                gigachatLabel.classList.add('btn-outline-primary');
+            }
+        }
+        
+        // Обновляем стили при изменении выбора
+        gigachatRadio.addEventListener('change', updateStyles);
+        openaiRadio.addEventListener('change', updateStyles);
+        
+        // Инициализация при загрузке
+        updateStyles();
+    }
+}
 
 // --- Bootstrap tooltips ---
 document.addEventListener('DOMContentLoaded', function() {
@@ -1001,6 +1036,12 @@ document.getElementById('resetFormBtn').onclick = function() {
     document.querySelectorAll('.dropdown-multicheck').forEach(wrapper => {
         if (typeof updateSelectedTags === 'function') updateSelectedTags(wrapper);
     });
+    // Обновить подсветку генератора (Gigachat по умолчанию)
+    const gigachatRadio = document.getElementById('genTypeGigachat');
+    if (gigachatRadio) {
+        gigachatRadio.checked = true;
+        updateGeneratorSelection();
+    }
     showToast('Форма очищена', 'info');
 };
 

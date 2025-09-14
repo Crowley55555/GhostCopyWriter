@@ -1,4 +1,5 @@
 Flask
-openai
+openai>=1.0.0
 requests
-cryptography 
+cryptography
+python-dotenv 

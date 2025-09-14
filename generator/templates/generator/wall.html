@@ -1,4 +1,5 @@
 {% extends 'generator/index.html' %}
+{% load custom_filters %}
 {% block nav_menu %}
 <button class="nav-popup-btn" id="navMenuBtn" title="Меню навигации"><i class="bi bi-list"></i></button>
 <div class="nav-popup-menu" id="navMenu">
@@ -64,13 +65,29 @@
                     <span class="badge bg-info text-dark">{{ gen.platform }}</span>
                 </div>
                 {% if gen.image_url %}
-                <img src="{{ gen.image_url }}" alt="AI image" class="card-img-top generated-image" style="max-height: 120px; object-fit: cover;">
+                    {% with images=gen.image_url|split:"|" %}
+                        {% if images|length > 1 %}
+                            <div class="image-carousel" style="max-height: 120px; overflow: hidden; position: relative;">
+                                <img src="{{ images.0 }}" alt="AI image" class="card-img-top generated-image" style="max-height: 120px; object-fit: cover;">
+                                <div class="image-counter" style="position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.7); color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;">
+                                    1/{{ images|length }}
+                                </div>
+                            </div>
+                        {% else %}
+                            <img src="{{ gen.image_url }}" alt="AI image" class="card-img-top generated-image" style="max-height: 120px; object-fit: cover;">
+                        {% endif %}
+                    {% endwith %}
                 {% endif %}
                 <div class="card-body">
                     <div class="mb-2"><span class="badge bg-secondary">{{ gen.template_type }}</span> <span class="badge bg-warning text-dark">{{ gen.tone }}</span></div>
                     <div class="mb-2"><strong>Тема:</strong> <span class="text-muted">{{ gen.topic|truncatechars:40 }}</span></div>
                     <div class="mb-2"><strong>Текст:</strong>
-                        <div class="wall-result-text text-dark" style="white-space: pre-line;">{{ gen.result|truncatechars:100 }}</div>
+                        <div class="wall-result-text text-dark" style="white-space: pre-line;">{{ gen.result|get_first_text|truncatechars:100 }}</div>
+                        {% if gen.result|count_versions > 1 %}
+                        <div class="text-muted small">
+                            <i class="bi bi-layers me-1"></i>{{ gen.result|count_versions }} версий текста
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>

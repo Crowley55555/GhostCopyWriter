@@ -20,19 +20,45 @@
    ```bash
    pip install -r requirements.txt
    ```
-3. Создайте файл `.env` и заполните переменные:
-   - `OPENAI_API_KEY` — ваш OpenAI API ключ
-   - `MIDJOURNEY_API_KEY` — ваш Midjourney API ключ
-   - `GENERATOR_ENCRYPTION_KEY` — ключ Fernet (опционально, иначе сгенерируется автоматически)
-   - `MIDJOURNEY_API_URL` — (опционально) endpoint Midjourney
+3. Создайте файл `.env` в папке `flask_generator` и заполните переменные:
+   ```
+   OPENAI_API_KEY=your_openai_api_key_here
+   COMETAPI_KEY=your_cometapi_key_here
+   GENERATOR_ENCRYPTION_KEY=k6W1hS1TpK-fOe-1pEGSSXmSDHkQNrpsI-TfuL-7EHI=
+   COMETAPI_URL=https://api.cometapi.com/v1
+   ```
+   
+   **⚠️ Важно:** 
+   - `OPENAI_API_KEY` для генерации текста и промптов
+   - `COMETAPI_KEY` для генерации изображений
+   - `GENERATOR_ENCRYPTION_KEY` должен совпадать с Django (уже настроен)
 4. Запустите сервер:
+
+   **Вариант 1 (рекомендуемый):**
    ```bash
-   python app.py
+   python -m flask --app app run --host=0.0.0.0 --port=5000 --debug
+   ```
+
+   **Вариант 2:**
+   ```bash
+   python run.py
+   ```
+
+   **Вариант 3 (Windows):**
+   ```bash
+   start.bat
+   ```
+
+   **Вариант 4 (Linux/Mac):**
+   ```bash
+   chmod +x start.sh
+   ./start.sh
    ```
 
 ## Эндпоинты
-- `POST /generate-text` — генерация текста и промпта для изображения
-- `POST /generate-image` — генерация изображения по промпту
+- `GET /` — health check
+- `POST /generate-text` — генерация текста через OpenAI и промпта для изображения
+- `POST /generate-image` — генерация изображения через CometAPI
 
 Все данные передаются и возвращаются в зашифрованном виде (Fernet).
 
@@ -42,7 +68,7 @@
 ## Пример .env
 ```
 OPENAI_API_KEY=your_openai_key
-MIDJOURNEY_API_KEY=your_midjourney_key
-GENERATOR_ENCRYPTION_KEY=your_fernet_key
-MIDJOURNEY_API_URL=https://api.midjourney.com/generate
+COMETAPI_KEY=your_cometapi_key
+GENERATOR_ENCRYPTION_KEY=k6W1hS1TpK-fOe-1pEGSSXmSDHkQNrpsI-TfuL-7EHI=
+COMETAPI_URL=https://api.cometapi.com/v1
 ``` 
