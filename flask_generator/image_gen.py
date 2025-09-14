@@ -8,9 +8,7 @@ if os.environ.get('OPENAI_API_KEY'):
     openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
     print("✅ OpenAI клиент для промптов инициализирован")
 
-# CometAPI настройки
-COMETAPI_KEY = os.environ.get('COMETAPI_KEY')
-COMETAPI_URL = os.environ.get('COMETAPI_URL', 'https://api.cometapi.com/v1')
+# OpenAI DALL-E настройки (используем тот же клиент)
 
 def generate_image_prompt_from_text(text, form_data):
     """
@@ -51,54 +49,61 @@ def generate_image_prompt_from_text(text, form_data):
         traceback.print_exc()
         return None
 
-def generate_image_cometapi(image_prompt):
-    """Генерация изображения через CometAPI"""
-    print(f"=== Flask: generate_image_cometapi вызван ===")
+def generate_image_dalle(image_prompt):
+    """Генерация изображения через OpenAI DALL-E"""
+    print(f"=== Flask: generate_image_dalle вызван ===")
     print(f"Image prompt: {image_prompt}")
     
-    # Проверяем наличие API ключа
-    if not COMETAPI_KEY:
-        print("⚠️ COMETAPI_KEY не установлен, используем mock изображение")
+    # Проверяем наличие OpenAI клиента
+    if not openai_client:
+        print("⚠️ OpenAI API не настроен, используем mock изображение")
         # Возвращаем placeholder изображение
-        mock_image_url = "https://via.placeholder.com/512x512/28a745/ffffff?text=CometAPI+Mock+Image"
+        mock_image_url = "https://via.placeholder.com/512x512/007bff/ffffff?text=DALL-E+Mock+Image"
         print(f"✅ Mock изображение: {mock_image_url}")
         return mock_image_url
     
     try:
-        print("🎨 Генерируем изображение через CometAPI...")
-        url = f"{COMETAPI_URL}/generate"
-        headers = {
-            'Authorization': f'Bearer {COMETAPI_KEY}',
-            'Content-Type': 'application/json'
-        }
-        data = {
-            'prompt': image_prompt,
-            'style': 'artistic',  # Художественный стиль для соцсетей
-        }
+        print("🎨 Генерируем изображение через OpenAI DALL-E...")
         
-        print(f"Отправляем запрос к CometAPI: {url}")
-        response = requests.post(url, json=data, headers=headers, timeout=60)
-        print(f"CometAPI ответ: {response.status_code}")
+        # Ограничиваем длину промпта (DALL-E имеет лимит)
+        if len(image_prompt) > 1000:
+            image_prompt = image_prompt[:1000]
+            print(f"⚠️ Промпт обрезан до 1000 символов")
         
-        if response.status_code == 200:
-            response_data = response.json()
-            image_url = response_data.get('image_url')
-            print(f"✅ Изображение получено от CometAPI: {image_url}")
-            return image_url
-        else:
-            print(f"❌ Ошибка CometAPI: {response.status_code}")
-            print(f"Response: {response.text}")
-            # Возвращаем mock изображение при ошибке
-            mock_image_url = "https://via.placeholder.com/512x512/dc3545/ffffff?text=CometAPI+Error"
-            return mock_image_url
-            
+        response = openai_client.images.generate(
+            model="dall-e-3",
+            prompt=image_prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+        
+        image_url = response.data[0].url
+        print(f"✅ Изображение получено от DALL-E: {image_url}")
+        return image_url
+        
     except Exception as e:
-        print(f"❌ Ошибка при генерации изображения через CometAPI: {e}")
+        print(f"❌ Ошибка при генерации изображения через DALL-E: {e}")
         import traceback
         traceback.print_exc()
-        # Возвращаем mock изображение при ошибке
-        mock_image_url = "https://via.placeholder.com/512x512/ffc107/000000?text=CometAPI+Exception"
-        return mock_image_url
+        
+        # Пробуем DALL-E 2 как fallback
+        try:
+            print("🔄 Пробуем DALL-E 2 как fallback...")
+            response = openai_client.images.generate(
+                model="dall-e-2",
+                prompt=image_prompt[:1000],  # DALL-E 2 имеет меньший лимит
+                size="512x512",
+                n=1,
+            )
+            image_url = response.data[0].url
+            print(f"✅ Изображение получено от DALL-E 2: {image_url}")
+            return image_url
+        except Exception as e2:
+            print(f"❌ DALL-E 2 тоже не сработал: {e2}")
+            # Возвращаем mock изображение при ошибке
+            mock_image_url = "https://via.placeholder.com/512x512/dc3545/ffffff?text=DALL-E+Error"
+            return mock_image_url
 
 def save_image_locally(image_url, save_path):
     """Сохранение изображения локально"""

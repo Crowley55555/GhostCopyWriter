@@ -23,14 +23,11 @@
 3. Создайте файл `.env` в папке `flask_generator` и заполните переменные:
    ```
    OPENAI_API_KEY=your_openai_api_key_here
-   COMETAPI_KEY=your_cometapi_key_here
    GENERATOR_ENCRYPTION_KEY=k6W1hS1TpK-fOe-1pEGSSXmSDHkQNrpsI-TfuL-7EHI=
-   COMETAPI_URL=https://api.cometapi.com/v1
    ```
    
    **⚠️ Важно:** 
-   - `OPENAI_API_KEY` для генерации текста и промптов
-   - `COMETAPI_KEY` для генерации изображений
+   - `OPENAI_API_KEY` для генерации текста, промптов И изображений (DALL-E)
    - `GENERATOR_ENCRYPTION_KEY` должен совпадать с Django (уже настроен)
 4. Запустите сервер:
 
@@ -57,8 +54,8 @@
 
 ## Эндпоинты
 - `GET /` — health check
-- `POST /generate-text` — генерация текста через OpenAI и промпта для изображения
-- `POST /generate-image` — генерация изображения через CometAPI
+- `POST /generate-text` — генерация текста через OpenAI GPT и промпта для изображения
+- `POST /generate-image` — генерация изображения через OpenAI DALL-E
 
 Все данные передаются и возвращаются в зашифрованном виде (Fernet).
 
@@ -68,7 +65,5 @@
 ## Пример .env
 ```
 OPENAI_API_KEY=your_openai_key
-COMETAPI_KEY=your_cometapi_key
 GENERATOR_ENCRYPTION_KEY=k6W1hS1TpK-fOe-1pEGSSXmSDHkQNrpsI-TfuL-7EHI=
-COMETAPI_URL=https://api.cometapi.com/v1
 ``` 

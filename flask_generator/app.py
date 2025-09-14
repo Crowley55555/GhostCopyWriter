@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from text_gen import generate_text
-from image_gen import generate_image_prompt_from_text, generate_image_cometapi
+from image_gen import generate_image_prompt_from_text, generate_image_dalle
 from crypto_utils import encrypt_data, decrypt_data
 
 app = Flask(__name__)
@@ -110,7 +110,7 @@ def generate_image_route():
         image_prompt = payload.get('image_prompt') or payload.get('prompt')
         print(f"Image prompt: {image_prompt}")
         
-        image_url = generate_image_cometapi(image_prompt)
+        image_url = generate_image_dalle(image_prompt)
         print(f"Generated image URL: {image_url}")
         
         encrypted_result = encrypt_data(json.dumps({'image_url': image_url}).encode())
