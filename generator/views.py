@@ -176,7 +176,7 @@ def generator_view(request):
                                 'error': 'Flask Generator не запущен. Запустите Flask приложение на порту 5000.'
                             })
                         else:
-                            result = "❌ Flask Generator не запущен. Запустите Flask приложение на порту 5000."
+                            result = "ERROR: Flask Generator не запущен. Запустите Flask приложение на порту 5000."
                             image_url = None
                     else:
                         try:
@@ -193,7 +193,7 @@ def generator_view(request):
                                     'error': f'Ошибка Flask API: {str(e)}'
                                 })
                             else:
-                                result = f"❌ Ошибка Flask API: {str(e)}"
+                                result = f"ERROR: Ошибка Flask API: {str(e)}"
                                 image_url = None
                 else:
                     # Старый генератор Gigachat

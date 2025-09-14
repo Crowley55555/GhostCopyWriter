@@ -31,23 +31,23 @@ if not ENCRYPTION_KEY:
     # Генерируем валидный ключ автоматически
     key = Fernet.generate_key()
     ENCRYPTION_KEY = key.decode()
-    print(f"🔑 Django: Сгенерирован новый ключ: {ENCRYPTION_KEY}")
-    print("💡 Добавьте этот ключ в ОБА .env файла:")
+    print(f"KEY: Django: Сгенерирован новый ключ: {ENCRYPTION_KEY}")
+    print("INFO: Добавьте этот ключ в ОБА .env файла:")
     print(f"GENERATOR_ENCRYPTION_KEY={ENCRYPTION_KEY}")
-    print("🔄 Затем перезапустите приложения")
+    print("RESTART: Затем перезапустите приложения")
 
 try:
     cipher = Fernet(ENCRYPTION_KEY.encode())
-    print(f"✅ Django: Ключ шифрования инициализирован")
+    print(f"OK: Django: Ключ шифрования инициализирован")
 except ValueError as e:
     # Генерируем новый валидный ключ
     key = Fernet.generate_key()
     ENCRYPTION_KEY = key.decode()
     cipher = Fernet(key)
-    print(f"🔑 Django: Сгенерирован исправленный ключ: {ENCRYPTION_KEY}")
-    print("💡 Добавьте этот ключ в ОБА .env файла:")
+    print(f"KEY: Django: Сгенерирован исправленный ключ: {ENCRYPTION_KEY}")
+    print("INFO: Добавьте этот ключ в ОБА .env файла:")
     print(f"GENERATOR_ENCRYPTION_KEY={ENCRYPTION_KEY}")
-    print("🔄 Затем перезапустите приложения")
+    print("RESTART: Затем перезапустите приложения")
 
 # =============================================================================
 # ENCRYPTION FUNCTIONS
@@ -122,14 +122,14 @@ def generate_text_and_prompt(payload: dict) -> dict:
             print(f"Данные расшифрованы: {result}")
             return result
         except Exception as decrypt_error:
-            print(f"❌ Ошибка расшифровки ответа: {decrypt_error}")
+            print(f"ERROR: Ошибка расшифровки ответа: {decrypt_error}")
             # Fallback: пробуем парсить как обычный JSON
             try:
                 result = json.loads(data)
                 print(f"Данные обработаны как JSON: {result}")
                 return result
             except Exception as json_error:
-                print(f"❌ Ошибка парсинга JSON: {json_error}")
+                print(f"ERROR: Ошибка парсинга JSON: {json_error}")
                 raise Exception(f"Не удалось обработать ответ от Flask: {data}")
                 
     except requests.exceptions.ConnectionError as e:

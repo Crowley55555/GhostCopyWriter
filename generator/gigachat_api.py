@@ -23,12 +23,12 @@ print("SCOPE:", repr(SCOPE))
 
 # Проверяем, что все переменные заданы
 if not CLIENT_ID or not CLIENT_SECRET:
-    print("⚠️ ВНИМАНИЕ: CLIENT_ID или CLIENT_SECRET не заданы!")
+    print("WARNING: CLIENT_ID или CLIENT_SECRET не заданы!")
     print("Убедитесь, что в .env файле есть переменные:")
     print("GIGACHAT_CLIENT_ID=ваш_client_id")
     print("GIGACHAT_CLIENT_SECRET=ваш_client_secret")
 else:
-    print("✅ Переменные окружения настроены корректно")
+    print("OK: Переменные окружения настроены корректно")
 
 def _get_base64_credentials():
     creds = f"{CLIENT_ID}:{CLIENT_SECRET}".encode("utf-8")
@@ -422,13 +422,13 @@ def generate_text(data):
         print(f"Ошибка при генерации текста: {e}")
         print(f"Тип ошибки: {type(e)}")
         if "429" in str(e) or "Too Many Requests" in str(e):
-            return "⚠️ Превышен лимит запросов к GigaChat. Попробуйте позже."
+            return "WARNING: Превышен лимит запросов к GigaChat. Попробуйте позже."
         elif "401" in str(e) or "Unauthorized" in str(e):
-            return "⚠️ Ошибка аутентификации. Проверьте настройки GigaChat."
+            return "WARNING: Ошибка аутентификации. Проверьте настройки GigaChat."
         elif "403" in str(e) or "Forbidden" in str(e):
-            return "⚠️ Доступ запрещен. Проверьте права доступа к GigaChat."
+            return "WARNING: Доступ запрещен. Проверьте права доступа к GigaChat."
         else:
-            return f"⚠️ Ошибка при генерации текста: {str(e)[:100]}"
+            return f"WARNING: Ошибка при генерации текста: {str(e)[:100]}"
 
 def generate_image_prompt_from_text(text, form_data):
     """

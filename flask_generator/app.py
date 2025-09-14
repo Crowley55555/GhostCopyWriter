@@ -108,7 +108,7 @@ def generate_text_route():
                 payload = json.loads(decrypted)
             print(f"Parsed payload: {payload}")
         except Exception as decrypt_error:
-            print(f"❌ Ошибка расшифровки: {decrypt_error}")
+            print(f"ERROR: Ошибка расшифровки: {decrypt_error}")
             # Fallback на тестовые данные
             payload = {'topic': 'Тестовая тема', 'platform_specific': ['VK']}
             print(f"Используем fallback payload: {payload}")
@@ -129,11 +129,11 @@ def generate_text_route():
         
         # Шифруем и возвращаем результат
         encrypted_result = encrypt_data(json.dumps(result).encode())
-        print(f"✅ Результат зашифрован, длина: {len(encrypted_result)}")
+        print(f"OK: Результат зашифрован, длина: {len(encrypted_result)}")
         return jsonify({'data': encrypted_result})
         
     except Exception as e:
-        print(f"❌ Error in generate_text_route: {e}")
+        print(f"ERROR: Error in generate_text_route: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
@@ -190,7 +190,7 @@ def generate_image_route():
         return jsonify({'data': encrypted_result})
         
     except Exception as e:
-        print(f"❌ Error in generate_image_route: {e}")
+        print(f"ERROR: Error in generate_image_route: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
@@ -200,11 +200,11 @@ def generate_image_route():
 # =============================================================================
 
 if __name__ == '__main__':
-    print("🚀 Запуск Flask Generator API...")
-    print("📡 Доступные endpoints:")
+    print("INFO: Запуск Flask Generator API...")
+    print("INFO: Доступные endpoints:")
     print("   GET  / - health check")
     print("   POST /test - тестовый endpoint")
     print("   POST /generate-text - генерация текста и промпта")
     print("   POST /generate-image - генерация изображения")
-    print("🌐 Сервер запускается на http://0.0.0.0:5000")
+    print("INFO: Сервер запускается на http://0.0.0.0:5000")
     app.run(host='0.0.0.0', port=5000, debug=True) 
