@@ -1,17 +1,56 @@
+#!/usr/bin/env python3
+"""
+Модуль генерации текста через OpenAI GPT
+
+Функции:
+- generate_text(): Генерация текста для социальных сетей через GPT-3.5-turbo
+- Поддержка mock ответов при отсутствии API ключа
+- Адаптация контента под параметры формы (длина, платформа, CTA)
+"""
+
+# =============================================================================
+# IMPORTS
+# =============================================================================
 import os
 from prompt_utils import assemble_prompt_from_criteria
-
-# Подключаем OpenAI API
 from openai import OpenAI
 
-# Инициализируем клиента только если есть API ключ
+# =============================================================================
+# OPENAI CLIENT INITIALIZATION
+# =============================================================================
+
+# Инициализируем OpenAI клиента только при наличии API ключа
 openai_client = None
 if os.environ.get('OPENAI_API_KEY'):
-    openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
-    print("✅ OpenAI клиент инициализирован")
+    try:
+        openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+        print("✅ OpenAI клиент для генерации текста инициализирован")
+    except Exception as e:
+        print(f"❌ Ошибка инициализации OpenAI клиента: {e}")
+        openai_client = None
+
+# =============================================================================
+# TEXT GENERATION FUNCTIONS
+# =============================================================================
 
 def generate_text(data):
-    """Генерация текста через OpenAI API (или mock для тестирования)"""
+    """
+    Генерация текста для социальных сетей
+    
+    Использует OpenAI GPT-3.5-turbo для создания контента на основе
+    параметров формы. При отсутствии API ключа возвращает умные mock ответы.
+    
+    Args:
+        data (dict): Параметры генерации из Django формы
+            - topic: тема поста
+            - platform_specific: список платформ
+            - post_length: длина поста
+            - cta: призыв к действию
+            - и другие параметры формы
+    
+    Returns:
+        str: Сгенерированный текст поста
+    """
     print(f"=== Flask: generate_text вызван ===")
     print(f"Data: {data}")
     
