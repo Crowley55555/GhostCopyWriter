@@ -5,3 +5,5 @@ langchain-gigachat>=0.3.11
 langchain-core
 gigachat
 beautifulsoup4
+django-widget-tweaks
+cryptography

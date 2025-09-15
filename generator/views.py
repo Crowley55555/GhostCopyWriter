@@ -1,86 +1,248 @@
-from django.shortcuts import render
+# =============================================================================
+# DJANGO IMPORTS
+# =============================================================================
+from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from django.http import JsonResponse
-import os, base64, re
-from .forms import GenerationForm
-from .gigachat_api import generate_text, generate_image_gigachat
-from .yandex_image_api import generate_image as generate_image_yandex
-from .models import Generation
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import redirect, get_object_or_404
-from .forms import RegisterForm, LoginForm, UserProfileForm, UserEditForm
-from .models import UserProfile, Generation
 from django.contrib.auth.models import User
-from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.views.decorators.csrf import csrf_exempt
-from datetime import datetime
 from django.views.decorators.http import require_POST, require_GET
-from django.contrib.auth.decorators import login_required
-from .models import GenerationTemplate
-from django.views.decorators.csrf import csrf_exempt
 from django.forms.models import model_to_dict
+from datetime import datetime
+
+# =============================================================================
+# PROJECT IMPORTS
+# =============================================================================
+from .forms import GenerationForm, RegisterForm, LoginForm, UserProfileForm, UserEditForm
+from .models import Generation, UserProfile, GenerationTemplate
+from .gigachat_api import generate_text, generate_image_gigachat
+from .yandex_image_api import generate_image as generate_image_yandex
+from .fastapi_client import generate_text_and_prompt, generate_image
+
+# =============================================================================
+# THIRD PARTY IMPORTS
+# =============================================================================
+import os
+import base64
+import re
+import requests
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+def check_flask_api_status():
+    """
+    Проверяет доступность Flask API сервера
+    
+    Returns:
+        bool: True если Flask API доступен, False в противном случае
+    """
+    try:
+        flask_url = os.environ.get('FLASK_GEN_URL', 'http://localhost:5000')
+        response = requests.get(f"{flask_url}/", timeout=2)
+        return True
+    except Exception as e:
+        print(f"Flask API недоступен: {e}")
+        return False
+
+# =============================================================================
+# AUTHENTICATION VIEWS
+# =============================================================================
+
+def quick_login(request, username):
+    """
+    Быстрый вход для тестовых пользователей (только для разработки)
+    
+    Автоматически создает тестовых пользователей при первом обращении:
+    - admin: суперпользователь для админ панели
+    - test_user_1: Анна Петрова (Москва, контент-маркетолог)
+    - test_user_2: Михаил Сидоров (СПб, SMM-менеджер)
+    
+    Args:
+        request: HTTP запрос
+        username (str): Имя пользователя (admin/test_user_1/test_user_2)
+    
+    Returns:
+        HttpResponse: Редирект на соответствующую страницу
+    """
+    if request.method == 'POST':
+        try:
+            # Проверяем, что это разрешенный тестовый пользователь
+            if username in ['admin', 'test_user_1', 'test_user_2']:
+                try:
+                    user = User.objects.get(username=username)
+                except User.DoesNotExist:
+                    # Автоматическое создание тестовых пользователей
+                    if username == 'admin':
+                        user = User.objects.create_superuser(
+                            username='admin',
+                            email='admin@example.com',
+                            password='admin123',
+                            first_name='Администратор',
+                            last_name='Системы'
+                        )
+                    elif username == 'test_user_1':
+                        user = User.objects.create_user(
+                            username='test_user_1',
+                            email='test1@example.com',
+                            password='test123',
+                            first_name='Анна',
+                            last_name='Петрова'
+                        )
+                        # Создаем профиль пользователя
+                        UserProfile.objects.get_or_create(
+                            user=user,
+                            defaults={
+                                'city': 'Москва',
+                                'bio': 'Тестовый пользователь для разработки. Специалист по контент-маркетингу.'
+                            }
+                        )
+                    elif username == 'test_user_2':
+                        user = User.objects.create_user(
+                            username='test_user_2',
+                            email='test2@example.com',
+                            password='test123',
+                            first_name='Михаил',
+                            last_name='Сидоров'
+                        )
+                        # Создаем профиль пользователя
+                        UserProfile.objects.get_or_create(
+                            user=user,
+                            defaults={
+                                'city': 'Санкт-Петербург',
+                                'bio': 'Второй тестовый пользователь для разработки. SMM-менеджер.'
+                            }
+                        )
+                
+                # Выполняем вход
+                login(request, user)
+                messages.success(request, f'Добро пожаловать, {user.first_name or user.username}!')
+                
+                # Редирект в зависимости от типа пользователя
+                if username == 'admin':
+                    return redirect('/admin/')  # Админ панель Django
+                else:
+                    return redirect('profile')  # Личный кабинет пользователя
+            else:
+                messages.error(request, 'Неверный пользователь для быстрого входа')
+        except Exception as e:
+            messages.error(request, f'Ошибка входа: {str(e)}')
+    
+    return redirect('login')
+
+# =============================================================================
+# CONTENT GENERATION VIEWS
+# =============================================================================
 
 def generator_view(request):
+    """
+    Основная функция генерации контента
+    
+    Поддерживает два типа генераторов:
+    1. GigaChat (российский AI) - по умолчанию
+    2. OpenAI + DALL-E (через Flask API)
+    
+    Обрабатывает AJAX запросы для динамической генерации
+    Сохраняет результаты в базу данных для отображения на стене пользователя
+    
+    Args:
+        request: HTTP запрос с параметрами генерации
+    
+    Returns:
+        JsonResponse: Для AJAX запросов
+        HttpResponse: Для обычных запросов с рендером шаблона
+    """
+    # Инициализация переменных
     result = None
     image_url = None
     limit_reached = False
     form = GenerationForm(request.POST or None)
+    generator_type = request.POST.get('generator_type', 'gigachat')  # Новый параметр
     if request.method == 'POST':
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         if form.is_valid():
             try:
-                # Получаем все данные из формы
                 form_data = form.cleaned_data.copy()
-                # Генерируем текст
-                result = generate_text(form_data)
-                # Новый пайплайн: генерируем промпт для изображения на основе текста
-                from .gigachat_api import generate_image_prompt_from_text
-                image_prompt = generate_image_prompt_from_text(result, form_data) if result else None
-                # Генерируем изображение по новому промпту, если он есть, иначе по теме
-                if image_prompt:
-                    image_data = generate_image_gigachat(image_prompt)
-                else:
-                    image_data = generate_image_gigachat(form_data.get('topic', ''))
-                # Обрабатываем изображение
-                if image_data:
-                    if image_data.startswith("data:image"):
-                        import uuid
-                        filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
-                        full_path = os.path.join(settings.MEDIA_ROOT, filename)
-                        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-                        base64_data = image_data.split(',')[1]
-                        image_bytes = base64.b64decode(base64_data)
-                        with open(full_path, "wb") as f:
-                            f.write(image_bytes)
-                        image_url = settings.MEDIA_URL + filename
-                    elif image_data.startswith("http"):
-                        image_url = image_data
+                if generator_type == 'openai':
+                    # Проверяем доступность Flask API
+                    if not check_flask_api_status():
+                        if is_ajax:
+                            return JsonResponse({
+                                'success': False, 
+                                'error': 'Flask Generator не запущен. Запустите Flask приложение на порту 5000.'
+                            })
+                        else:
+                            result = "ERROR: Flask Generator не запущен. Запустите Flask приложение на порту 5000."
+                            image_url = None
                     else:
-                        filename = f"generated_{form_data.get('topic', '')[:20].replace(' ', '_')}.jpg"
-                        full_path = os.path.join(settings.MEDIA_ROOT, filename)
-                        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
                         try:
-                            image_bytes = base64.b64decode(image_data)
+                            # Генератор через Flask API
+                            gen_result = generate_text_and_prompt(form_data)
+                            result = gen_result.get('text')
+                            image_prompt = gen_result.get('image_prompt')
+                            image_url = generate_image(image_prompt) if image_prompt else None
+                        except Exception as e:
+                            print(f"Ошибка Flask API: {e}")
+                            if is_ajax:
+                                return JsonResponse({
+                                    'success': False, 
+                                    'error': f'Ошибка Flask API: {str(e)}'
+                                })
+                            else:
+                                result = f"ERROR: Ошибка Flask API: {str(e)}"
+                                image_url = None
+                else:
+                    # Старый генератор Gigachat
+                    result = generate_text(form_data)
+                    from .gigachat_api import generate_image_prompt_from_text
+                    image_prompt = generate_image_prompt_from_text(result, form_data) if result else None
+                    if image_prompt:
+                        image_data = generate_image_gigachat(image_prompt)
+                    else:
+                        image_data = generate_image_gigachat(form_data.get('topic', ''))
+                    if image_data:
+                        if image_data.startswith("data:image"):
+                            import uuid
+                            filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
+                            full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                            os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                            base64_data = image_data.split(',')[1]
+                            image_bytes = base64.b64decode(base64_data)
                             with open(full_path, "wb") as f:
                                 f.write(image_bytes)
                             image_url = settings.MEDIA_URL + filename
-                        except Exception as e:
-                            image_url = None
-                # Сохраняем результат в базу с image_url
+                        elif image_data.startswith("http"):
+                            image_url = image_data
+                        else:
+                            filename = f"generated_{form_data.get('topic', '')[:20].replace(' ', '_')}.jpg"
+                            full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                            os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                            try:
+                                image_bytes = base64.b64decode(image_data)
+                                with open(full_path, "wb") as f:
+                                    f.write(image_bytes)
+                                image_url = settings.MEDIA_URL + filename
+                            except Exception as e:
+                                image_url = None
                 gen = Generation.objects.create(
                     user=request.user if request.user.is_authenticated else None,
                     topic=form_data.get('topic', ''),
                     result=result,
                     image_url=image_url or ""
                 )
+                # Сохраняем ID генерации в сессии для последующих перегенераций
+                request.session['current_generation_id'] = gen.id
                 if is_ajax:
                     return JsonResponse({
                         'success': True,
                         'result': result,
                         'image_url': image_url,
-                        'limit_reached': limit_reached
+                        'limit_reached': limit_reached,
+                        'generation_id': gen.id
                     })
             except Exception as e:
                 print(f"Ошибка генерации: {e}")
@@ -88,14 +250,28 @@ def generator_view(request):
                     return JsonResponse({'success': False, 'error': str(e)})
         else:
             if is_ajax:
-                # Собираем ошибки формы для фронта
                 errors = {field: [str(err) for err in errs] for field, errs in form.errors.items()}
                 return JsonResponse({'success': False, 'error': 'Некорректно заполнена форма', 'form_errors': errors})
     return render(request, 'generator/gigagenerator.html', {'form': form, 'result': result, 'image_url': image_url, 'limit_reached': limit_reached})
 
+# =============================================================================
+# REGENERATION FUNCTIONS
+# =============================================================================
+
 @csrf_exempt
 def regenerate_text(request):
-    """Перегенерация только текста"""
+    """
+    Перегенерация только текста для существующей записи
+    
+    Обновляет существующую запись Generation, добавляя новую версию текста
+    с разделителем. Использует ID генерации из сессии для обновления.
+    
+    Args:
+        request: AJAX POST запрос с темой
+    
+    Returns:
+        JsonResponse: Результат перегенерации или ошибка
+    """
     if request.method == 'POST':
         try:
             # Получаем данные из формы
@@ -113,11 +289,33 @@ def regenerate_text(request):
             }
             # Генерируем новый текст
             result = generate_text(form_data)
-            # Сохраняем в базу
-            Generation.objects.create(
-                topic=topic,
-                result=result,
-            )
+            
+            # Обновляем существующую запись или создаем новую
+            generation_id = request.session.get('current_generation_id')
+            if generation_id:
+                try:
+                    gen = Generation.objects.get(id=generation_id)
+                    # Добавляем разделитель и новый текст
+                    gen.result += f"\n\n--- Перегенерация {gen.result.count('--- Перегенерация') + 1} ---\n\n{result}"
+                    gen.save()
+                except Generation.DoesNotExist:
+                    # Если запись не найдена, создаем новую
+                    gen = Generation.objects.create(
+                        user=request.user if request.user.is_authenticated else None,
+                        topic=topic,
+                        result=result,
+                        image_url=""
+                    )
+                    request.session['current_generation_id'] = gen.id
+            else:
+                # Создаем новую запись, если нет ID в сессии
+                gen = Generation.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    topic=topic,
+                    result=result,
+                    image_url=""
+                )
+                request.session['current_generation_id'] = gen.id
             return JsonResponse({
                 'success': True,
                 'result': result,
@@ -134,9 +332,63 @@ def regenerate_text(request):
         'error': 'Метод не поддерживается'
     })
 
+def update_generation_image(request, topic, image_url):
+    """
+    Вспомогательная функция для обновления изображения в существующей генерации
+    
+    Добавляет новое изображение к существующей записи Generation, используя
+    символ '|' как разделитель между URL изображений. Если записи нет,
+    создает новую.
+    
+    Args:
+        request: HTTP запрос (для доступа к сессии)
+        topic (str): Тема генерации
+        image_url (str): URL нового изображения
+    """
+    generation_id = request.session.get('current_generation_id')
+    
+    if generation_id:
+        try:
+            gen = Generation.objects.get(id=generation_id)
+            # Добавляем новое изображение к существующим
+            if gen.image_url:
+                gen.image_url += f"|{image_url}"
+            else:
+                gen.image_url = image_url
+            gen.save()
+        except Generation.DoesNotExist:
+            # Создаем новую запись, если старая не найдена
+            gen = Generation.objects.create(
+                user=request.user if request.user.is_authenticated else None,
+                topic=topic,
+                result="",
+                image_url=image_url
+            )
+            request.session['current_generation_id'] = gen.id
+    else:
+        # Создаем новую запись, если нет ID в сессии
+        gen = Generation.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            topic=topic,
+            result="",
+            image_url=image_url
+        )
+        request.session['current_generation_id'] = gen.id
+
 @csrf_exempt
 def regenerate_image(request):
-    """Перегенерация только изображения"""
+    """
+    Перегенерация только изображения для существующей записи
+    
+    Генерирует новое изображение на основе темы и добавляет его к существующей
+    записи Generation. Поддерживает несколько форматов изображений (base64, URL).
+    
+    Args:
+        request: AJAX POST запрос с темой
+    
+    Returns:
+        JsonResponse: URL нового изображения или ошибка
+    """
     if request.method == 'POST':
         try:
             topic = request.POST.get('topic')
@@ -186,6 +438,9 @@ def regenerate_image(request):
                         print(f"Изображение сохранено локально: {image_url}")
                         print(f"Размер файла: {len(image_bytes)} байт")
                         
+                        # Обновляем изображение в существующей записи
+                        update_generation_image(request, topic, image_url)
+                        
                         return JsonResponse({
                             'success': True,
                             'image_url': image_url,
@@ -195,6 +450,9 @@ def regenerate_image(request):
                     except Exception as e:
                         print(f"Ошибка при сохранении base64 изображения: {e}")
                         # Возвращаемся к base64 как fallback
+                        # Обновляем изображение в существующей записи
+                        update_generation_image(request, topic, image_data)
+                        
                         return JsonResponse({
                             'success': True,
                             'image_url': image_data,
@@ -202,6 +460,9 @@ def regenerate_image(request):
                         })
                 elif image_data.startswith("http"):
                     # Это URL (если вдруг вернется)
+                    # Обновляем изображение в существующей записи
+                    update_generation_image(request, topic, image_data)
+                    
                     return JsonResponse({
                         'success': True,
                         'image_url': image_data,
@@ -220,6 +481,9 @@ def regenerate_image(request):
                             f.write(image_bytes)
                         image_url = settings.MEDIA_URL + filename
                         print(f"Изображение сохранено локально: {image_url}")
+                        
+                        # Обновляем изображение в существующей записи
+                        update_generation_image(request, topic, image_url)
                         
                         return JsonResponse({
                             'success': True,

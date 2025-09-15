@@ -1,0 +1,92 @@
+# Docker Compose для продакшена
+# Django на российском сервере, Flask на зарубежном сервере
+
+version: '3.8'
+
+services:
+  # Django приложение (только для российского сервера)
+  django:
+    build: .
+    container_name: ghostwriter-django-prod
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=ghostwriter.production_settings
+      - GIGACHAT_CLIENT_ID=${GIGACHAT_CLIENT_ID}
+      - GIGACHAT_CLIENT_SECRET=${GIGACHAT_CLIENT_SECRET}
+      - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
+      - FLASK_GEN_URL=${FLASK_EXTERNAL_URL}  # URL зарубежного Flask сервера
+      - DB_HOST=${DB_HOST}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_URL=${REDIS_URL}
+      - SECRET_KEY=${DJANGO_SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+    volumes:
+      - /opt/ghostwriter/media:/app/media
+      - /opt/ghostwriter/logs:/app/logs
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # PostgreSQL (российский сервер)
+  db:
+    image: postgres:15-alpine
+    container_name: ghostwriter-db-prod
+    environment:
+      - POSTGRES_DB=ghostwriter
+      - POSTGRES_USER=ghostwriter
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--locale=ru_RU.UTF-8
+    volumes:
+      - /opt/ghostwriter/postgres:/var/lib/postgresql/data
+      - /opt/ghostwriter/backups:/backups
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Redis (российский сервер)
+  redis:
+    image: redis:7-alpine
+    container_name: ghostwriter-redis-prod
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - /opt/ghostwriter/redis:/data
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+
+  # Nginx (российский сервер)
+  nginx:
+    image: nginx:alpine
+    container_name: ghostwriter-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - /opt/ghostwriter/ssl:/etc/nginx/ssl:ro
+      - /opt/ghostwriter/media:/var/www/media:ro
+      - /opt/ghostwriter/static:/var/www/static:ro
+    depends_on:
+      - django
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+
+networks:
+  ghostwriter-network:
+    driver: bridge
