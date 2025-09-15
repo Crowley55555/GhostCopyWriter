@@ -10,10 +10,27 @@
 """
 
 import pytest
-from django.test import TestCase
+import tempfile
+from django.test import TestCase, override_settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from generator.models import UserProfile, Generation, GenerationTemplate
+
+# Переопределяем настройки для тестов
+@override_settings(
+    DATABASES={
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+            'OPTIONS': {
+                'timeout': 20,
+            }
+        }
+    },
+    MEDIA_ROOT=tempfile.mkdtemp(),
+    USE_TZ=False,
+    PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher']
+)
 
 
 class UserProfileModelTest(TestCase):
