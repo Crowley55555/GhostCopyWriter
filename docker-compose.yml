@@ -1,0 +1,95 @@
+# Docker Compose для локальной разработки
+# Оба сервиса на одной машине
+
+version: '3.8'
+
+services:
+  # Django приложение (основной сервис)
+  django:
+    build: .
+    container_name: ghostwriter-django
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=ghostwriter.settings
+      - GIGACHAT_CLIENT_ID=${GIGACHAT_CLIENT_ID}
+      - GIGACHAT_CLIENT_SECRET=${GIGACHAT_CLIENT_SECRET}
+      - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
+      - FLASK_GEN_URL=http://flask:5000
+    volumes:
+      - ./media:/app/media
+      - ./logs:/app/logs
+    depends_on:
+      - db
+      - flask
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+
+  # Flask AI микросервис
+  flask:
+    build: ./flask_generator
+    container_name: ghostwriter-flask
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
+    volumes:
+      - ./flask_generator/logs:/app/logs
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+
+  # База данных PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: ghostwriter-db
+    environment:
+      - POSTGRES_DB=ghostwriter
+      - POSTGRES_USER=ghostwriter
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+
+  # Redis для кеширования
+  redis:
+    image: redis:7-alpine
+    container_name: ghostwriter-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ghostwriter-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./media:/var/www/media:ro
+      - ./staticfiles:/var/www/static:ro
+    depends_on:
+      - django
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  ghostwriter-network:
+    driver: bridge
