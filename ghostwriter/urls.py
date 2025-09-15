@@ -34,6 +34,7 @@ urlpatterns = [
     path('delete-generation/<int:gen_id>/', views.delete_generation_view, name='delete_generation'),
     path('generation/<int:gen_id>/', views.generation_detail_view, name='generation_detail'),
     path('agreement/', views.agreement_view, name='user_agreement'),
+    path('quick-login/<str:username>/', views.quick_login, name='quick_login'),
     path('api/', include('generator.urls')),
 ]
 

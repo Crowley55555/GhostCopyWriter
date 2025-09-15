@@ -1,4 +1,5 @@
 {% extends 'generator/index.html' %}
+{% load custom_filters %}
 {% block content %}
 <div class="container-sm px-3 px-md-4 py-4">
   <div class="row justify-content-center">
@@ -12,20 +13,48 @@
           <span class="badge bg-info text-dark">{{ gen.platform }}</span>
         </div>
         {% if gen.image_url %}
-        <img src="{{ gen.image_url }}" alt="AI image" class="card-img-top generated-image" id="genDetailImage" style="max-height: 320px; object-fit: contain; background: #f8f9fa;">
-        <div class="text-center my-3 d-flex flex-wrap gap-2 justify-content-center">
-          <button onclick="downloadImage(document.getElementById('genDetailImage').src)" class="btn btn-outline-success">
-            <i class="bi bi-download me-2"></i>Сохранить изображение
-          </button>
-          <form method="get" action="{% url 'delete_generation' gen.id %}" onsubmit="return confirm('Удалить этот пост?');" style="display:inline;">
-            <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash me-2"></i>Удалить пост</button>
-          </form>
-        </div>
+          {% with images=gen.image_url|split:"|" %}
+            {% if images|length > 1 %}
+              <div class="image-gallery">
+                <div class="mb-3">
+                  <h6><i class="bi bi-images me-2"></i>Изображения ({{ images|length }})</h6>
+                </div>
+                {% for image in images %}
+                  <div class="mb-3">
+                    <h6 class="text-muted">Версия {{ forloop.counter }}</h6>
+                    <img src="{{ image }}" alt="AI image версия {{ forloop.counter }}" class="card-img-top generated-image" style="max-height: 320px; object-fit: contain; background: #f8f9fa; width: 100%;">
+                    <div class="text-center mt-2">
+                      <button onclick="downloadImage('{{ image }}')" class="btn btn-outline-success btn-sm">
+                        <i class="bi bi-download me-1"></i>Сохранить
+                      </button>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <img src="{{ gen.image_url }}" alt="AI image" class="card-img-top generated-image" id="genDetailImage" style="max-height: 320px; object-fit: contain; background: #f8f9fa;">
+              <div class="text-center my-3 d-flex flex-wrap gap-2 justify-content-center">
+                <button onclick="downloadImage(document.getElementById('genDetailImage').src)" class="btn btn-outline-success">
+                  <i class="bi bi-download me-2"></i>Сохранить изображение
+                </button>
+              </div>
+            {% endif %}
+          {% endwith %}
+          <div class="text-center my-3">
+            <form method="get" action="{% url 'delete_generation' gen.id %}" onsubmit="return confirm('Удалить этот пост?');" style="display:inline;">
+              <button type="submit" class="btn btn-outline-danger"><i class="bi bi-trash me-2"></i>Удалить пост</button>
+            </form>
+          </div>
         {% endif %}
         <div class="card-body">
           <div class="mb-2"><span class="badge bg-secondary">{{ gen.template_type }}</span> <span class="badge bg-warning text-dark">{{ gen.tone }}</span></div>
           <div class="mb-2"><strong>Тема:</strong> <span class="text-muted">{{ gen.topic }}</span></div>
           <div class="mb-2"><strong>Текст:</strong>
+            {% if gen.result|count_versions > 1 %}
+              <div class="mb-2">
+                <span class="badge bg-info"><i class="bi bi-layers me-1"></i>{{ gen.result|count_versions }} версий</span>
+              </div>
+            {% endif %}
             <div class="wall-result-text text-dark" style="white-space: pre-line;">{{ gen.result }}</div>
           </div>
         </div>
