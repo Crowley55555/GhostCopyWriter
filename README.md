@@ -338,7 +338,7 @@ chmod +x deploy/deploy-full.sh
   <li><b>Автор:</b> Лавров Артем</li>
   <li><b>Email:</b> <a href="mailto:lavrovartem0511@gmail.com">lavrovartem0511@gmail.com</a></li>
   <li><b>Telegram:</b> <a href="https://t.me/rain511">@rain511</a></li>
-  <li><b>GitHub:</b> <a href="https://github.com/yourusername">@yourusername</a></li>
+  <li><b>GitHub:</b> <a href="https://github.com/Crowley55555">@Crowley55555</a></li>
 </ul>
 
 <hr/>
