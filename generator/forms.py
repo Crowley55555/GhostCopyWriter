@@ -295,6 +295,14 @@ class LoginForm(AuthenticationForm):
     username = forms.CharField(label="Имя пользователя или Email")
     password = forms.CharField(widget=forms.PasswordInput, label="Пароль")
     remember_me = forms.BooleanField(label="Запомнить меня", required=False, initial=False)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Настраиваем сообщения об ошибках
+        self.error_messages = {
+            'invalid_login': 'Неверное имя пользователя или пароль. Проверьте правильность введенных данных.',
+            'inactive': 'Ваш аккаунт неактивен. Обратитесь к администратору.',
+        }
 
 class UserProfileForm(forms.ModelForm):
     date_of_birth = forms.CharField(

@@ -577,6 +577,9 @@ def login_view(request):
             else:
                 request.session.set_expiry(0)  # До закрытия браузера
             return redirect('profile')  # Перенаправление на профиль
+        else:
+            # Форма не валидна - показываем ошибки
+            messages.error(request, 'Неверное имя пользователя или пароль. Попробуйте еще раз.')
     else:
         form = LoginForm()
     return render(request, 'generator/login.html', {'form': form})
