@@ -5,10 +5,13 @@ Django модели для системы генерации контента
 - UserProfile: Расширенный профиль пользователя
 - Generation: Сгенерированный контент (текст + изображения)
 - GenerationTemplate: Сохраненные шаблоны настроек генерации
+- TemporaryAccessToken: Временные токены доступа для анонимных пользователей
 """
 
+import uuid
 from django.contrib.auth.models import User
 from django.db import models
+from django.utils import timezone
 
 
 class UserProfile(models.Model):
@@ -100,4 +103,148 @@ class GenerationTemplate(models.Model):
 
     def __str__(self):
         return f"{self.user.username}: {self.name}"
+
+
+class TemporaryAccessToken(models.Model):
+    """
+    Временные токены доступа для анонимных пользователей
+    
+    Позволяет пользователям получать доступ к приложению без регистрации
+    через временные токены с различными ограничениями по типу.
+    
+    Типы токенов:
+    - DEMO: 5 дней, 5 генераций в день
+    - MONTHLY: 30 дней, безлимитные генерации
+    - YEARLY: 365 дней, безлимитные генерации
+    """
+    TOKEN_TYPES = (
+        ('DEMO', 'Демо (5 дней, 5 ген./день)'),
+        ('MONTHLY', '30 дней'),
+        ('YEARLY', '365 дней'),
+        ('DEVELOPER', 'Разработчик (бессрочный, безлимит)'),
+    )
+    
+    # Уникальный токен (UUID) - без связи с User для анонимного доступа
+    token = models.UUIDField(
+        default=uuid.uuid4, 
+        unique=True, 
+        editable=False,
+        verbose_name="Токен",
+        help_text="Уникальный идентификатор токена доступа"
+    )
+    
+    # Тип токена и время жизни
+    token_type = models.CharField(
+        max_length=10, 
+        choices=TOKEN_TYPES,
+        verbose_name="Тип токена"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания"
+    )
+    expires_at = models.DateTimeField(
+        verbose_name="Дата истечения",
+        help_text="Токен становится недействительным после этой даты"
+    )
+    
+    # Лимиты для демо режима
+    daily_generations_left = models.IntegerField(
+        default=0,
+        verbose_name="Осталось генераций сегодня",
+        help_text="Для DEMO: количество генераций доступных сегодня (обнуляется каждый день)"
+    )
+    generations_reset_date = models.DateField(
+        null=True, 
+        blank=True,
+        verbose_name="Дата сброса счетчика",
+        help_text="Дата последнего сброса счетчика генераций"
+    )
+    
+    # Статистика использования
+    total_used = models.IntegerField(
+        default=0,
+        verbose_name="Всего использований",
+        help_text="Общее количество генераций через этот токен"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активен",
+        help_text="Неактивные токены не могут быть использованы"
+    )
+    
+    # Сессионные данные (технические, не ПДн)
+    last_used = models.DateTimeField(
+        null=True, 
+        blank=True,
+        verbose_name="Последнее использование",
+        help_text="Время последней генерации с этим токеном"
+    )
+    current_ip = models.GenericIPAddressField(
+        null=True, 
+        blank=True,
+        verbose_name="Текущий IP",
+        help_text="IP адрес последнего использования (для технической диагностики)"
+    )
+    
+    class Meta:
+        verbose_name = "Временный токен доступа"
+        verbose_name_plural = "Временные токены доступа"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['token']),
+            models.Index(fields=['is_active', 'expires_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_token_type_display()} - {self.token} (истекает {self.expires_at.strftime('%d.%m.%Y')})"
+    
+    def is_expired(self):
+        """Проверяет, истек ли срок действия токена"""
+        # DEVELOPER токены никогда не истекают
+        if self.token_type == 'DEVELOPER':
+            return False
+        return timezone.now() > self.expires_at
+    
+    def reset_daily_limit(self):
+        """Сбрасывает дневной лимит генераций для DEMO токенов"""
+        if self.token_type == 'DEMO':
+            today = timezone.now().date()
+            if self.generations_reset_date != today:
+                self.daily_generations_left = 5
+                self.generations_reset_date = today
+                self.save()
+    
+    def can_generate(self):
+        """Проверяет, может ли токен использоваться для генерации"""
+        if not self.is_active or self.is_expired():
+            return False
+        
+        # DEVELOPER токены имеют неограниченные генерации
+        if self.token_type == 'DEVELOPER':
+            return True
+        
+        if self.token_type == 'DEMO':
+            self.reset_daily_limit()
+            return self.daily_generations_left > 0
+        
+        return True
+    
+    def consume_generation(self, ip_address=None):
+        """
+        Уменьшает счетчик генераций и обновляет статистику
+        
+        Args:
+            ip_address (str): IP адрес пользователя для логирования
+        """
+        # DEVELOPER токены не имеют лимитов
+        if self.token_type == 'DEMO':
+            if self.daily_generations_left > 0:
+                self.daily_generations_left -= 1
+        
+        self.total_used += 1
+        self.last_used = timezone.now()
+        if ip_address:
+            self.current_ip = ip_address
+        self.save()
 

@@ -25,18 +25,38 @@ urlpatterns = [
     path('generator/', views.generator_view, name='index'),
     path('regenerate-text/', views.regenerate_text, name='regenerate_text'),
     path('regenerate-image/', views.regenerate_image, name='regenerate_image'),
-    path('register/', views.register_view, name='register'),
-    path('login/', views.login_view, name='login'),
+    
+    # DEPRECATED: Старая система регистрации/входа (заглушки)
+    # Теперь используем систему токенов для доступа
+    path('register/', views.register_disabled_view, name='register'),
+    path('login/', views.login_disabled_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    
+    # User features (доступны через токены)
     path('profile/', views.profile_view, name='profile'),
     path('profile/edit/', views.edit_profile_view, name='edit_profile'),
     path('wall/', views.user_wall_view, name='user_wall'),
     path('delete-generation/<int:gen_id>/', views.delete_generation_view, name='delete_generation'),
     path('generation/<int:gen_id>/', views.generation_detail_view, name='generation_detail'),
-    path('agreement/', views.agreement_view, name='user_agreement'),
-    path('quick-login/<str:username>/', views.quick_login, name='quick_login'),
+    
+    # Token authentication routes (основной способ входа)
+    path('auth/token/<uuid:token>/', views.token_auth_view, name='token_auth'),
+    path('token-required/', views.token_required_page, name='token_required_page'),
+    path('invalid-token/', views.invalid_token_page, name='invalid_token_page'),
+    path('limit-exceeded/', views.limit_exceeded_page, name='limit_exceeded_page'),
+    
+    # Telegram webhook
+    path('telegram/webhook/', views.telegram_webhook, name='telegram_webhook'),
+    
+    # API routes
     path('api/', include('generator.urls')),
 ]
+
+# Quick login (только для разработки)
+if settings.DEBUG:
+    urlpatterns += [
+        path('quick-login/<str:username>/', views.quick_login, name='quick_login'),
+    ]
 
 # В режиме DEBUG:
 if settings.DEBUG:

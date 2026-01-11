@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
+import secrets
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -49,6 +50,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'generator.middleware.TokenAccessMiddleware',  # Кастомный middleware для токенов
 ]
 
 ROOT_URLCONF = 'ghostwriter.urls'
@@ -140,3 +142,36 @@ CSRF_TRUSTED_ORIGINS = [
 # Настройки для разработки
 CSRF_COOKIE_SECURE = False
 CSRF_COOKIE_HTTPONLY = False
+
+# =============================================================================
+# TELEGRAM BOT SETTINGS
+# =============================================================================
+
+# Telegram Bot токен (получить у @BotFather)
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+
+# Секретный токен для верификации webhook запросов
+TELEGRAM_WEBHOOK_SECRET = os.environ.get('TELEGRAM_WEBHOOK_SECRET', secrets.token_urlsafe(32))
+
+# URL сайта для генерации ссылок с токенами
+SITE_URL = os.environ.get('SITE_URL', 'http://localhost:8000')
+
+# =============================================================================
+# SESSION SETTINGS
+# =============================================================================
+
+# Настройки сессий для работы с временными токенами
+SESSION_COOKIE_NAME = 'ghostwriter_session'
+SESSION_COOKIE_AGE = 86400 * 30  # 30 дней (максимальный срок токена)
+SESSION_SAVE_EVERY_REQUEST = True  # Обновлять сессию при каждом запросе
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Не удалять сессию при закрытии браузера
+
+# =============================================================================
+# SECURITY SETTINGS
+# =============================================================================
+
+# Политика рефереров для безопасности
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+# Разрешить iframe для админки
+X_FRAME_OPTIONS = 'SAMEORIGIN'

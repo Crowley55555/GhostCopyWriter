@@ -2,16 +2,35 @@
 {% block content %}
 <div class="container py-5">
     <div class="row justify-content-center align-items-center" style="min-height: 60vh;">
-        <div class="col-lg-8 text-center">
+        <div class="col-lg-10 text-center">
             <h1 class="display-3 fw-bold mb-4 text-gradient">Ghostwriter AI</h1>
             <p class="lead mb-4">
                 Добро пожаловать в <b>Ghostwriter AI</b> — ваш персональный генератор SMM-контента на базе искусственного интеллекта!<br>
                 Создавайте уникальные посты и иллюстрации для соцсетей в один клик.<br>
-                Ваша история генераций всегда под рукой в личном профиле.
+                <strong>Без регистрации. Полная анонимность.</strong>
             </p>
-            <div class="d-flex justify-content-center gap-3 mt-4">
-                <a href="{% url 'login' %}" class="btn btn-primary btn-lg px-4"><i class="bi bi-box-arrow-in-right me-2"></i>Войти</a>
-                <a href="{% url 'register' %}" class="btn btn-outline-primary btn-lg px-4"><i class="bi bi-person-plus me-2"></i>Регистрация</a>
+            
+            <div class="alert alert-info mx-auto" style="max-width: 600px;" role="alert">
+                <h5 class="alert-heading">🔐 Новая система доступа</h5>
+                <p class="mb-0">
+                    Теперь вход осуществляется через <strong>токен-ссылки</strong>.
+                    Никакой регистрации и личных данных не требуется!
+                </p>
+            </div>
+
+            <div class="d-flex justify-content-center gap-3 mt-4 flex-wrap">
+                <a href="https://t.me/YourGhostwriterBot" class="btn btn-primary btn-lg px-4" target="_blank">
+                    <i class="bi bi-telegram me-2"></i>Получить токен через Telegram
+                </a>
+                <a href="{% url 'token_required_page' %}" class="btn btn-outline-primary btn-lg px-4">
+                    <i class="bi bi-info-circle me-2"></i>Как это работает?
+                </a>
+            </div>
+
+            <div class="mt-5 text-muted">
+                <small>
+                    🔒 Соблюдение 152-ФЗ | 🆓 DEMO доступ бесплатно | ⚡ Мгновенный вход
+                </small>
             </div>
         </div>
     </div>
@@ -19,6 +38,10 @@
 {% endblock %}
 
 {% block header_buttons %}
-    <a href="{% url 'login' %}" class="btn btn-primary me-2">Войти</a>
-    <a href="{% url 'register' %}" class="btn btn-outline-primary">Регистрация</a>
+    <a href="https://t.me/YourGhostwriterBot" class="btn btn-primary me-2" target="_blank">
+        <i class="bi bi-telegram me-1"></i>Получить токен
+    </a>
+    <a href="{% url 'token_required_page' %}" class="btn btn-outline-primary">
+        <i class="bi bi-question-circle me-1"></i>Инфо
+    </a>
 {% endblock %} 

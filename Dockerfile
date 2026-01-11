@@ -1,5 +1,5 @@
 # Django Application Dockerfile
-# Оптимизированный для продакшена с соблюдением 152-ФЗ
+# Обновлен под систему токенов и Telegram бота
 
 FROM python:3.11-slim
 
@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     gettext \
     postgresql-client \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Создание пользователя для безопасности
@@ -18,7 +19,7 @@ WORKDIR /app
 
 # Копирование requirements и установка Python зависимостей
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Копирование проекта
 COPY . .
@@ -43,7 +44,7 @@ EXPOSE 8000
 
 # Проверка здоровья
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD python manage.py check --deploy --settings=ghostwriter.settings || exit 1
+  CMD curl -f http://localhost:8000/ || exit 1
 
 # Команда запуска
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "ghostwriter.wsgi:application"]

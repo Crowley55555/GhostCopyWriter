@@ -283,9 +283,15 @@
   <div class="btn-group w-100" role="group" aria-label="Выбор генератора">
     <input type="radio" class="btn-check" name="generator_type" id="genTypeGigachat" value="gigachat" autocomplete="off" checked>
     <label class="btn btn-outline-primary" for="genTypeGigachat" id="labelGigachat"><i class="bi bi-robot"></i> Gigachat</label>
-    <input type="radio" class="btn-check" name="generator_type" id="genTypeOpenAI" value="openai" autocomplete="off">
-    <label class="btn btn-outline-success" for="genTypeOpenAI" id="labelOpenAI"><i class="bi bi-lightning-charge"></i> OpenAI + DALL-E</label>
+    <input type="radio" class="btn-check" name="generator_type" id="genTypeOpenAI" value="openai" autocomplete="off" {% if is_demo %}disabled{% endif %}>
+    <label class="btn btn-outline-success {% if is_demo %}opacity-50{% endif %}" for="genTypeOpenAI" id="labelOpenAI" {% if is_demo %}style="cursor: not-allowed;"{% endif %}><i class="bi bi-lightning-charge"></i> OpenAI + DALL-E{% if is_demo %} <span class="badge bg-warning text-dark ms-1">DEMO</span>{% endif %}</label>
   </div>
+  {% if is_demo %}
+  <div class="alert alert-warning mt-2 py-2 px-3 mb-0 d-flex align-items-center" role="alert">
+    <i class="bi bi-info-circle-fill me-2"></i>
+    <small><strong>Выбор OpenAI + DALL-E недоступен в демо режиме.</strong> Пожалуйста, используйте Gigachat или оформите полный доступ через Telegram бота.</small>
+  </div>
+  {% endif %}
 </div>
                         </div>
                         <div class="d-flex gap-2 mt-4">
@@ -814,6 +820,21 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Инициализация подсветки выбранного генератора
     updateGeneratorSelection();
+    
+    // Блокировка OpenAI для DEMO токенов
+    {% if is_demo %}
+    const openaiLabel = document.getElementById('labelOpenAI');
+    const openaiRadio = document.getElementById('genTypeOpenAI');
+    if (openaiLabel && openaiRadio) {
+        openaiLabel.addEventListener('click', function(e) {
+            if (openaiRadio.disabled) {
+                e.preventDefault();
+                e.stopPropagation();
+                showToast('Выбор OpenAI + DALL-E недоступен в демо режиме. Пожалуйста, используйте Gigachat.', 'warning');
+            }
+        });
+    }
+    {% endif %}
 });
 
 // --- Подсветка выбранного генератора ---

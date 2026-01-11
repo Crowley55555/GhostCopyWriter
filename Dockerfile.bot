@@ -1,0 +1,41 @@
+# Telegram Bot Dockerfile
+# Отдельный контейнер для Telegram бота
+
+FROM python:3.11-slim
+
+# Установка системных зависимостей
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Создание пользователя для безопасности
+RUN addgroup --system botuser && adduser --system --group botuser
+
+# Установка рабочей директории
+WORKDIR /app
+
+# Копирование requirements основного проекта (содержит python-telegram-bot)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копирование только необходимых файлов для бота
+COPY bot.py .
+COPY .env .
+
+# Создание директории для логов
+RUN mkdir -p /app/logs
+
+# Установка прав доступа
+RUN chown -R botuser:botuser /app
+USER botuser
+
+# Переменные окружения
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Проверка здоровья
+HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
+  CMD pgrep -f "python.*bot.py" || exit 1
+
+# Команда запуска
+CMD ["python", "bot.py"]

@@ -1,5 +1,5 @@
 # Docker Compose для локальной разработки
-# Оба сервиса на одной машине
+# Все сервисы на одной машине
 
 version: '3.8'
 
@@ -16,12 +16,44 @@ services:
       - GIGACHAT_CLIENT_SECRET=${GIGACHAT_CLIENT_SECRET}
       - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
       - FLASK_GEN_URL=http://flask:5000
+      - DB_HOST=db
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${DJANGO_SECRET_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
+      - SITE_URL=${SITE_URL:-http://localhost:8000}
     volumes:
       - ./media:/app/media
+      - ./staticfiles:/app/staticfiles
       - ./logs:/app/logs
     depends_on:
       - db
+      - redis
       - flask
+    networks:
+      - ghostwriter-network
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn --bind 0.0.0.0:8000 --workers 3 --timeout 120 ghostwriter.wsgi:application"
+
+  # Telegram Bot (отдельный контейнер)
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: ghostwriter-bot
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
+      - DJANGO_API_URL=http://django:8000
+      - SITE_URL=${SITE_URL:-http://localhost:8000}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - django
     networks:
       - ghostwriter-network
     restart: unless-stopped
@@ -56,6 +88,11 @@ services:
     networks:
       - ghostwriter-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ghostwriter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Redis для кеширования
   redis:
@@ -67,6 +104,11 @@ services:
     networks:
       - ghostwriter-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   # Nginx reverse proxy
   nginx:
