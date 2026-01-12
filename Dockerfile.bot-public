@@ -1,15 +1,15 @@
 # ==============================================================================
-# GHOSTWRITER - Telegram Bot (Main Bot - Auto Token Distribution)
+# GHOSTWRITER - Telegram Bot (Public Bot - Marketing & Onboarding)
 # ==============================================================================
-# Основной бот для автоматической выдачи токенов
-# Файл: bot.py
+# Публичный бот для массового привлечения пользователей
+# Файл: bot_public.py
 # ==============================================================================
 
 FROM python:3.11-slim
 
 LABEL maintainer="Ghostwriter Team"
 LABEL version="3.0"
-LABEL description="Main Telegram Bot for automatic token distribution"
+LABEL description="Public Telegram Bot for marketing and user onboarding"
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y \
@@ -23,18 +23,16 @@ RUN addgroup --system bot && adduser --system --group bot
 WORKDIR /app
 
 # Копирование requirements
-# Используем те же requirements что и для Django (бот использует те же библиотеки)
 COPY requirements.txt .
 
 # Установка зависимостей
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
     python-telegram-bot==20.7 \
-    requests>=2.31.0 \
     python-dotenv>=1.0.0
 
-# Копирование только необходимых файлов для бота
-COPY --chown=bot:bot bot.py .
+# Копирование только необходимых файлов для публичного бота
+COPY --chown=bot:bot bot_public.py .
 COPY --chown=bot:bot .env* ./
 
 # Создание директории для логов
@@ -47,9 +45,9 @@ USER bot
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Проверка здоровья (бот должен быть запущен)
+# Проверка здоровья
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
-    CMD pgrep -f "python.*bot.py" > /dev/null || exit 1
+    CMD pgrep -f "python.*bot_public.py" > /dev/null || exit 1
 
 # Команда запуска
-CMD ["python", "-u", "bot.py"]
+CMD ["python", "-u", "bot_public.py"]

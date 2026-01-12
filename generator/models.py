@@ -9,6 +9,7 @@ Django модели для системы генерации контента
 """
 
 import uuid
+import hashlib
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
@@ -187,6 +188,17 @@ class TemporaryAccessToken(models.Model):
         help_text="IP адрес последнего использования (для технической диагностики)"
     )
     
+    # Хешированный Telegram user_id для предотвращения повторной выдачи DEMO токенов
+    # Хеширование обеспечивает анонимность (152-ФЗ)
+    telegram_user_id_hash = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="Хеш Telegram user_id",
+        help_text="SHA-256 хеш Telegram user_id для отслеживания без сбора ПДн",
+        db_index=True
+    )
+    
     class Meta:
         verbose_name = "Временный токен доступа"
         verbose_name_plural = "Временные токены доступа"
@@ -247,4 +259,19 @@ class TemporaryAccessToken(models.Model):
         if ip_address:
             self.current_ip = ip_address
         self.save()
+    
+    @staticmethod
+    def hash_telegram_user_id(user_id):
+        """
+        Хеширует Telegram user_id для анонимного отслеживания
+        
+        Args:
+            user_id (int): Telegram user ID
+            
+        Returns:
+            str: SHA-256 хеш user_id
+        """
+        if user_id is None:
+            return None
+        return hashlib.sha256(str(user_id).encode()).hexdigest()
 

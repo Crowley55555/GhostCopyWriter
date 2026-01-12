@@ -1,0 +1,15 @@
+# DEVELOPER TOKEN
+# Бессрочный токен для разработки и тестирования
+# НЕ КОММИТИТЬ В GIT!
+
+TOKEN_UUID=fef1edac-d4eb-4edc-b718-6b8b3f07527a
+DEV_NAME=Artem Lavrov
+CREATED=11.01.2026 19:24:27
+EXPIRES=18.12.2125 (бессрочный)
+
+# Ссылки доступа
+LOCAL_URL=http://localhost:8000/auth/token/fef1edac-d4eb-4edc-b718-6b8b3f07527a/
+PROD_URL=https://yourdomain.com/auth/token/fef1edac-d4eb-4edc-b718-6b8b3f07527a/
+
+# Для использования в .env файле
+DEV_TOKEN_URL=http://localhost:8000/auth/token/fef1edac-d4eb-4edc-b718-6b8b3f07527a/

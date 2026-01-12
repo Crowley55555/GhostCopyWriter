@@ -875,7 +875,10 @@ def telegram_webhook(request):
     Обрабатывает команды и кнопки от пользователей Telegram,
     генерирует токены доступа и отправляет ссылки.
     
-    Безопасность: Проверяет секретный токен в заголовках запроса.
+    Безопасность: 
+    - Проверяет секретный токен в заголовках запроса
+    - Валидирует структуру данных от Telegram
+    - Rate limiting через middleware
     
     Args:
         request: POST запрос от Telegram API
@@ -887,19 +890,38 @@ def telegram_webhook(request):
     from django.conf import settings
     from datetime import timedelta
     from django.utils import timezone
+    from .security import WebhookSecurity, log_security_event
+    from ipware import get_client_ip
     
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    # Проверка безопасности webhook
+    is_valid, error_msg = WebhookSecurity.verify_telegram_request(
+        request,
+        getattr(settings, 'TELEGRAM_WEBHOOK_SECRET', '')
+    )
     
-    # Простая верификация через секретный токен
-    secret_token = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
-    expected_token = getattr(settings, 'TELEGRAM_WEBHOOK_SECRET', None)
-    
-    if not expected_token or secret_token != expected_token:
+    if not is_valid:
+        client_ip, _ = get_client_ip(request)
+        log_security_event(
+            'webhook_unauthorized',
+            f"ip:{client_ip}",
+            f"Invalid webhook request: {error_msg}",
+            'WARNING'
+        )
         return JsonResponse({'error': 'Unauthorized'}, status=401)
     
     try:
         data = json.loads(request.body)
+        
+        # Валидация структуры update от Telegram
+        is_valid_update, error_msg = WebhookSecurity.validate_telegram_update(data)
+        if not is_valid_update:
+            log_security_event(
+                'webhook_invalid_data',
+                f"update_id:{data.get('update_id', 'unknown')}",
+                f"Invalid update structure: {error_msg}",
+                'WARNING'
+            )
+            return JsonResponse({'error': 'Invalid update'}, status=400)
         
         # Обработка callback_query (нажатия кнопок)
         if 'callback_query' in data:
@@ -1108,6 +1130,7 @@ def api_create_token(request):
         token_type = data.get('token_type', 'DEMO')
         expires_days = data.get('expires_days', 5)
         daily_limit = data.get('daily_limit', 5)
+        telegram_user_id = data.get('telegram_user_id')  # Опционально для анонимности
         
         # Валидация типа токена
         valid_types = ['DEMO', 'MONTHLY', 'YEARLY', 'DEVELOPER']
@@ -1117,9 +1140,43 @@ def api_create_token(request):
                 'message': f'Token type must be one of: {", ".join(valid_types)}'
             }, status=400)
         
-        # Создаем токен
+        # Для DEMO токенов проверяем, нет ли уже активного токена у этого пользователя
+        if token_type == 'DEMO' and telegram_user_id:
+            user_id_hash = TemporaryAccessToken.hash_telegram_user_id(telegram_user_id)
+            
+            # Проверяем наличие активного DEMO токена у этого пользователя
+            existing_token = TemporaryAccessToken.objects.filter(
+                token_type='DEMO',
+                telegram_user_id_hash=user_id_hash,
+                is_active=True,
+                expires_at__gt=timezone.now()
+            ).first()
+            
+            if existing_token:
+                # Возвращаем существующий токен вместо создания нового
+                site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+                token_url = f"{site_url}/auth/token/{existing_token.token}/"
+                
+                return JsonResponse({
+                    'token': str(existing_token.token),
+                    'token_type': existing_token.token_type,
+                    'expires_at': existing_token.expires_at.isoformat(),
+                    'daily_limit': existing_token.daily_generations_left,
+                    'url': token_url,
+                    'created_at': existing_token.created_at.isoformat(),
+                    'is_active': existing_token.is_active,
+                    'is_existing': True,
+                    'message': 'У вас уже есть активный DEMO токен'
+                }, status=200)
+        
+        # Создаем новый токен
         now = timezone.now()
         expires_at = now + timedelta(days=expires_days)
+        
+        # Хешируем user_id если передан
+        user_id_hash = None
+        if telegram_user_id:
+            user_id_hash = TemporaryAccessToken.hash_telegram_user_id(telegram_user_id)
         
         token = TemporaryAccessToken.objects.create(
             token_type=token_type,
@@ -1127,7 +1184,8 @@ def api_create_token(request):
             daily_generations_left=daily_limit,
             generations_reset_date=now.date() if token_type == 'DEMO' else None,
             is_active=True,
-            total_used=0
+            total_used=0,
+            telegram_user_id_hash=user_id_hash
         )
         
         # Формируем URL токена
@@ -1142,7 +1200,8 @@ def api_create_token(request):
             'daily_limit': token.daily_generations_left,
             'url': token_url,
             'created_at': token.created_at.isoformat(),
-            'is_active': token.is_active
+            'is_active': token.is_active,
+            'is_existing': False
         }
         
         return JsonResponse(response_data, status=201)

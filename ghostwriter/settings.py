@@ -47,10 +47,17 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
+    
+    # Безопасность (добавлено)
+    'generator.security_middleware.SecurityMiddleware',  # Rate limiting, IP блокировка
+    
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    
     'generator.middleware.TokenAccessMiddleware',  # Кастомный middleware для токенов
+    'generator.security_middleware.TokenSecurityMiddleware',  # Безопасность токенов
+    'generator.security_middleware.AuditLogMiddleware',  # Аудит и логирование
 ]
 
 ROOT_URLCONF = 'ghostwriter.urls'
@@ -82,6 +89,27 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# =============================================================================
+# CACHE (Redis для rate limiting и безопасности)
+# =============================================================================
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
+
+# Для продакшена используйте Redis:
+# CACHES = {
+#     'default': {
+#         'BACKEND': 'django_redis.cache.RedisCache',
+#         'LOCATION': os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1'),
+#         'OPTIONS': {
+#             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+#         }
+#     }
+# }
 
 
 # Password validation
@@ -142,6 +170,70 @@ CSRF_TRUSTED_ORIGINS = [
 # Настройки для разработки
 CSRF_COOKIE_SECURE = False
 CSRF_COOKIE_HTTPONLY = False
+
+# =============================================================================
+# SECURITY SETTINGS
+# =============================================================================
+
+# Rate Limiting (можно переопределить через .env)
+MAX_REQUESTS_PER_MINUTE = int(os.environ.get('MAX_REQUESTS_PER_MINUTE', 60))
+MAX_REQUESTS_PER_HOUR = int(os.environ.get('MAX_REQUESTS_PER_HOUR', 1000))
+MAX_GENERATIONS_PER_HOUR = int(os.environ.get('MAX_GENERATIONS_PER_HOUR', 50))
+
+# Блокировка
+MAX_FAILED_ATTEMPTS = int(os.environ.get('MAX_FAILED_ATTEMPTS', 5))
+BLOCK_DURATION_MINUTES = int(os.environ.get('BLOCK_DURATION_MINUTES', 30))
+SUSPICIOUS_ACTIVITY_THRESHOLD = int(os.environ.get('SUSPICIOUS_ACTIVITY_THRESHOLD', 10))
+
+# Production Security (активировать в .env для продакшена)
+SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False') == 'True'
+SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'
+CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False') == 'True'
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', 0))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get('SECURE_HSTS_INCLUDE_SUBDOMAINS', 'False') == 'True'
+SECURE_HSTS_PRELOAD = os.environ.get('SECURE_HSTS_PRELOAD', 'False') == 'True'
+
+# Logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'formatter': 'verbose',
+        },
+        'security': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'security.log',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': os.environ.get('LOG_LEVEL', 'INFO'),
+        },
+        'security': {
+            'handlers': ['console', 'security'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# Создаем директорию для логов если её нет
+(BASE_DIR / 'logs').mkdir(exist_ok=True)
 
 # =============================================================================
 # TELEGRAM BOT SETTINGS

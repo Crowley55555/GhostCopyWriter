@@ -1,69 +1,89 @@
-# Django .dockerignore
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
 
 # Django
 *.log
-local_settings.py
 db.sqlite3
 db.sqlite3-journal
+/media/*
+!/media/.gitkeep
+/staticfiles/*
+!/staticfiles/.gitkeep
+
+# Logs
+logs/*.log
 
 # Environment
 .env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Development
-.git
-.gitignore
-README.md
-.pytest_cache/
-.coverage
-htmlcov/
+.env.*
+!.env.example
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
 .DS_Store
-Thumbs.db
 
-# Testing
-test_results.txt
-django_test_results.txt
-test_media/
+# Git
+.git/
+.gitignore
+.gitattributes
 
-# Flask microservice (excluded from Django image)
+# Documentation
+*.md
+!README.md
+
+# Tests
+tests/
+test_*.py
+*_test.py
+pytest.ini
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Manual token generator (не деплоим)
+manual_token_generator.py
+tokens_*.txt
+
+# Deployment scripts
+deploy/
+setup_*.sh
+setup_*.ps1
+
+# Docker files (не нужны внутри контейнера)
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Backups
+backups/
+*.sql
+*.dump
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Flask generator (не используется в этом контейнере)
 flask_generator/
 
-# Docker
-Dockerfile
-.dockerignore
-docker-compose*.yml
+# Old deployment files
+DOCKER_DEPLOYMENT.md
+DEPLOYMENT.md
+DEV.md
