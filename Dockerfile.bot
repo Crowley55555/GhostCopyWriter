@@ -1,15 +1,7 @@
-# ==============================================================================
-# GHOSTWRITER - Telegram Bot (Main Bot - Auto Token Distribution)
-# ==============================================================================
-# Основной бот для автоматической выдачи токенов
-# Файл: bot.py
-# ==============================================================================
+# Telegram Bot Dockerfile
+# Отдельный контейнер для Telegram бота
 
 FROM python:3.11-slim
-
-LABEL maintainer="Ghostwriter Team"
-LABEL version="3.0"
-LABEL description="Main Telegram Bot for automatic token distribution"
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y \
@@ -17,39 +9,33 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Создание пользователя для безопасности
-RUN addgroup --system bot && adduser --system --group bot
+RUN addgroup --system botuser && adduser --system --group botuser
 
 # Установка рабочей директории
 WORKDIR /app
 
-# Копирование requirements
-# Используем те же requirements что и для Django (бот использует те же библиотеки)
+# Копирование requirements основного проекта (содержит python-telegram-bot)
 COPY requirements.txt .
-
-# Установка зависимостей
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir \
-    python-telegram-bot==20.7 \
-    requests>=2.31.0 \
-    python-dotenv>=1.0.0
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование только необходимых файлов для бота
-COPY --chown=bot:bot bot.py .
-COPY --chown=bot:bot .env* ./
+COPY bot.py .
+COPY .env .
 
 # Создание директории для логов
-RUN mkdir -p /app/logs && chown -R bot:bot /app
+RUN mkdir -p /app/logs
 
-# Переключение на пользователя bot
-USER bot
+# Установка прав доступа
+RUN chown -R botuser:botuser /app
+USER botuser
 
 # Переменные окружения
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Проверка здоровья (бот должен быть запущен)
-HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
-    CMD pgrep -f "python.*bot.py" > /dev/null || exit 1
+# Проверка здоровья
+HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
+  CMD pgrep -f "python.*bot.py" || exit 1
 
 # Команда запуска
-CMD ["python", "-u", "bot.py"]
+CMD ["python", "bot.py"]

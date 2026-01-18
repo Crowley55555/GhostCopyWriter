@@ -84,13 +84,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.info(f"Пользователь {user.id} запустил команду /start")
 
 
-def create_token_via_api(token_type, telegram_user_id=None):
+def create_token_via_api(token_type):
     """
     Создает токен через Django API
     
     Args:
         token_type: Тип токена ('DEMO', 'MONTHLY', 'YEARLY')
-        telegram_user_id: ID пользователя Telegram (для предотвращения повторной выдачи DEMO)
     
     Returns:
         dict: Данные токена или None при ошибке
@@ -123,21 +122,12 @@ def create_token_via_api(token_type, telegram_user_id=None):
             'daily_limit': daily_limit
         }
         
-        # Передаем telegram_user_id для DEMO токенов (для предотвращения повторной выдачи)
-        if token_type == 'DEMO' and telegram_user_id:
-            data['telegram_user_id'] = telegram_user_id
-        
         logger.info(f"Отправка запроса к Django API: {url}")
         response = requests.post(url, json=data, headers=headers, timeout=10)
         
         if response.status_code == 201:
             result = response.json()
             logger.info(f"✅ Токен создан успешно: {result.get('token')}")
-            return result
-        elif response.status_code == 200:
-            # Токен уже существует (для DEMO)
-            result = response.json()
-            logger.info(f"ℹ️ Использован существующий токен: {result.get('token')}")
             return result
         else:
             logger.error(f"❌ Ошибка создания токена: {response.status_code} - {response.text}")
@@ -173,15 +163,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             parse_mode='HTML'
         )
         
-        # Создаем токен через Django API (передаем user_id для предотвращения повторной выдачи)
-        token_data = create_token_via_api('DEMO', telegram_user_id=user.id)
+        # Создаем токен через Django API
+        token_data = create_token_via_api('DEMO')
         
         if token_data:
-            # Успешно создали или получили существующий токен
+            # Успешно создали токен
             token = token_data.get('token')
             expires_at = token_data.get('expires_at')
             token_url = token_data.get('url')
-            is_existing = token_data.get('is_existing', False)
             
             # Парсим дату истечения
             try:
@@ -190,33 +179,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             except:
                 expires_str = expires_at
             
-            # Формируем сообщение в зависимости от того, новый это токен или существующий
-            if is_existing:
-                demo_text = (
-                    "ℹ️ <b>У вас уже есть активный DEMO токен!</b>\n\n"
-                    "📝 <b>Условия:</b>\n"
-                    "• Срок действия: 5 дней\n"
-                    "• Генераций в день: 5\n\n"
-                    "🔗 <b>Ваша ссылка:</b>\n"
-                    f"{token_url}\n\n"
-                    f"📅 <b>Активна до:</b> {expires_str}\n"
-                    f"⚡ <b>Генераций доступно сегодня:</b> {token_data.get('daily_limit', 5)}\n\n"
-                    "📌 <i>Используйте эту ссылку для доступа</i>\n\n"
-                    "💡 <b>Примечание:</b> Один пользователь может получить только один активный DEMO токен."
-                )
-            else:
-                demo_text = (
-                    "✅ <b>DEMO токен готов!</b>\n\n"
-                    "📝 <b>Условия:</b>\n"
-                    "• Срок действия: 5 дней\n"
-                    "• Генераций в день: 5\n\n"
-                    "🔗 <b>Ваша ссылка:</b>\n"
-                    f"{token_url}\n\n"
-                    f"📅 <b>Активна до:</b> {expires_str}\n"
-                    f"⚡ <b>Генераций доступно сегодня:</b> 5\n\n"
-                    "📌 <i>Скопируйте ссылку и откройте в браузере</i>\n\n"
-                    "💡 <b>Совет:</b> Сохраните эту ссылку - она работает как логин!"
-                )
+            demo_text = (
+                "✅ <b>DEMO токен готов!</b>\n\n"
+                "📝 <b>Условия:</b>\n"
+                "• Срок действия: 5 дней\n"
+                "• Генераций в день: 5\n\n"
+                "🔗 <b>Ваша ссылка:</b>\n"
+                f"{token_url}\n\n"
+                f"📅 <b>Активна до:</b> {expires_str}\n"
+                f"⚡ <b>Генераций доступно сегодня:</b> 5\n\n"
+                "📌 <i>Скопируйте ссылку и откройте в браузере</i>\n\n"
+                "💡 <b>Совет:</b> Сохраните эту ссылку - она работает как логин!"
+            )
             
             await query.edit_message_text(
                 text=demo_text,

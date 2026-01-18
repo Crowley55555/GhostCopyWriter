@@ -2,6 +2,8 @@
 {% block content %}
 <div class="container py-4">
   <div class="row justify-content-center g-4">
+    {% if user_profile %}
+    <!-- Профиль пользователя (если авторизован через Django) -->
     <!-- Аватар -->
     <div class="col-12 col-md-4 d-flex flex-column align-items-center">
       <div class="card shadow-lg border-0 text-center p-3 mb-3">
@@ -14,7 +16,6 @@
             </div>
           {% endif %}
         </div>
-        <a href="{% url 'edit_profile' %}" class="btn btn-outline-primary btn-sm w-100"><i class="bi bi-pencil me-1"></i>Изменить аватар</a>
       </div>
     </div>
     <!-- Данные пользователя -->
@@ -30,11 +31,41 @@
         <div class="mb-2"><strong>Телефон:</strong> <span>{{ user_profile.phone|default:'—' }}</span></div>
         <div class="mb-2"><strong>О себе:</strong> <span>{{ user_profile.bio|default:'—' }}</span></div>
       </div>
+    {% else %}
+    <!-- Информация о токене (система токенов) -->
+    <div class="col-12 col-md-8">
+      <div class="card shadow-lg border-0 p-4 mb-3">
+        <h3 class="mb-3"><i class="bi bi-key me-2"></i>Информация о токене доступа</h3>
+        {% if token %}
+        <div class="mb-3">
+          <div class="mb-2"><strong>Тип токена:</strong> <span class="badge bg-primary">{{ token_type_display|default:token_type }}</span></div>
+          <div class="mb-2"><strong>Токен:</strong> <code class="text-muted">{{ token.token }}</code></div>
+          <div class="mb-2"><strong>Создан:</strong> <span>{{ token.created_at|date:'d.m.Y H:i' }}</span></div>
+          <div class="mb-2"><strong>Истекает:</strong> 
+            {% if token.token_type == 'DEVELOPER' %}
+              <span class="badge bg-success">Бессрочный</span>
+            {% else %}
+              <span>{{ token.expires_at|date:'d.m.Y H:i' }}</span>
+            {% endif %}
+          </div>
+          {% if is_demo %}
+          <div class="mb-2"><strong>Генераций осталось сегодня:</strong> <span class="badge bg-info">{{ daily_left }} из 5</span></div>
+          {% else %}
+          <div class="mb-2"><strong>Лимит генераций:</strong> <span class="badge bg-success">Безлимит</span></div>
+          {% endif %}
+          <div class="mb-2"><strong>Всего использовано:</strong> <span>{{ token.total_used }}</span></div>
+          {% if token.last_used %}
+          <div class="mb-2"><strong>Последнее использование:</strong> <span>{{ token.last_used|date:'d.m.Y H:i' }}</span></div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    {% endif %}
       <!-- Меню действий -->
       <div class="card shadow-lg border-0 p-4 d-flex flex-wrap gap-2">
-        <a href="{% url 'edit_profile' %}" class="btn btn-outline-warning"><i class="bi bi-pencil-square me-1"></i>Редактировать профиль</a>
         <a href="{% url 'user_wall' %}" class="btn btn-outline-info"><i class="bi bi-card-list me-1"></i>Моя стена</a>
         <a href="{% url 'index' %}" class="btn btn-outline-success"><i class="bi bi-magic me-1"></i>Генератор контента</a>
+        <a href="https://t.me/YourGhostwriterBot" target="_blank" class="btn btn-primary"><i class="bi bi-telegram me-1"></i>Купить доступ</a>
         <a href="{% url 'logout' %}" class="btn btn-outline-danger"><i class="bi bi-box-arrow-right me-1"></i>Выйти</a>
       </div>
     </div>

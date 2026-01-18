@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from django.http import JsonResponse
 from django.contrib.auth import login, authenticate, logout
-from django.contrib.auth.decorators import login_required
+# from django.contrib.auth.decorators import login_required  # Не используется в системе токенов
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django.views.decorators.csrf import csrf_exempt
@@ -632,46 +632,80 @@ def logout_view(request):
 def home_view(request):
     return render(request, 'generator/home.html')
 
-@login_required
+@token_required
 def profile_view(request):
-    user_profile, created = UserProfile.objects.get_or_create(user=request.user)
-    return render(request, 'generator/profile.html', {'user_profile': user_profile})
+    # Получаем информацию о токене
+    token = request.token
+    token_type = request.session.get('token_type', 'DEMO')
+    token_type_display = token.get_token_type_display() if token else token_type
+    is_demo = request.session.get('is_demo', False)
+    daily_left = request.session.get('daily_generations_left', 0)
+    
+    # Для совместимости создаем фиктивный user_profile
+    # В системе токенов профиль пользователя не используется
+    user_profile = None
+    if request.user.is_authenticated:
+        user_profile, created = UserProfile.objects.get_or_create(user=request.user)
+    
+    return render(request, 'generator/profile.html', {
+        'user_profile': user_profile,
+        'token': token,
+        'token_type': token_type,
+        'token_type_display': token_type_display,
+        'is_demo': is_demo,
+        'daily_left': daily_left
+    })
 
-@login_required
+@token_required
 def edit_profile_view(request):
-    user_profile, created = UserProfile.objects.get_or_create(user=request.user)
-    if request.method == 'POST':
-        profile_form = UserProfileForm(request.POST, request.FILES, instance=user_profile)
-        if profile_form.is_valid():
-            profile_form.save()
-            return redirect('profile')
-    else:
-        profile_form = UserProfileForm(instance=user_profile)
-    return render(request, 'generator/edit_profile.html', {'profile_form': profile_form})
+    # В системе токенов редактирование профиля недоступно
+    # Профиль привязан к User, а токены работают без пользователей
+    messages.info(request, 'Редактирование профиля недоступно в системе токенов. Профиль привязан к пользователю Django.')
+    return redirect('profile')
 
-@login_required
+@token_required
 def user_wall_view(request):
-    generations = Generation.objects.filter(user=request.user).order_by('-created_at')
+    # Показываем все генерации (в системе токенов user может быть null)
+    # Можно фильтровать по токену, но в модели нет прямой связи
+    # Показываем все генерации без пользователя или все, если пользователь авторизован
+    if request.user.is_authenticated:
+        generations = Generation.objects.filter(user=request.user).order_by('-created_at')
+    else:
+        # Показываем генерации без пользователя (анонимные)
+        generations = Generation.objects.filter(user__isnull=True).order_by('-created_at')
     return render(request, 'generator/wall.html', {'generations': generations})
 
-@login_required
+@token_required
 def delete_generation_view(request, gen_id):
-    gen = get_object_or_404(Generation, id=gen_id, user=request.user)
+    # В системе токенов можно удалять генерации без привязки к пользователю
+    if request.user.is_authenticated:
+        gen = get_object_or_404(Generation, id=gen_id, user=request.user)
+    else:
+        gen = get_object_or_404(Generation, id=gen_id, user__isnull=True)
     if request.method == 'POST':
         gen.delete()
         messages.success(request, 'Контент успешно удалён.')
         return redirect('user_wall')
     return render(request, 'generator/delete_generation_confirm.html', {'gen': gen})
 
-@login_required
+@token_required
 def generation_detail_view(request, gen_id):
-    gen = get_object_or_404(Generation, id=gen_id, user=request.user)
+    # В системе токенов можно просматривать генерации без привязки к пользователю
+    if request.user.is_authenticated:
+        gen = get_object_or_404(Generation, id=gen_id, user=request.user)
+    else:
+        gen = get_object_or_404(Generation, id=gen_id, user__isnull=True)
     return render(request, 'generator/generation_detail.html', {'gen': gen})
 
 # --- API для шаблонов генератора ---
-@login_required
+# В системе токенов шаблоны недоступны (требуют User)
+@token_required
 @require_POST
 def save_template_view(request):
+    # Шаблоны требуют User, в системе токенов недоступны
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'error': 'Шаблоны доступны только для авторизованных пользователей'})
+    
     import json
     data = json.loads(request.body.decode('utf-8'))
     name = data.get('name', '').strip()
@@ -693,9 +727,13 @@ def save_template_view(request):
     )
     return JsonResponse({'success': True, 'template_id': template.id})
 
-@login_required
+@token_required
 @require_GET
 def get_templates_view(request):
+    # Шаблоны требуют User, в системе токенов недоступны
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'error': 'Шаблоны доступны только для авторизованных пользователей', 'templates': []})
+    
     templates = GenerationTemplate.objects.filter(user=request.user).order_by('-updated_at')
     result = [
         {
@@ -707,9 +745,13 @@ def get_templates_view(request):
     ]
     return JsonResponse({'success': True, 'templates': result})
 
-@login_required
+@token_required
 @require_GET
 def load_template_view(request):
+    # Шаблоны требуют User, в системе токенов недоступны
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'error': 'Шаблоны доступны только для авторизованных пользователей'})
+    
     template_id = request.GET.get('id')
     try:
         template = GenerationTemplate.objects.get(user=request.user, id=template_id)
@@ -717,9 +759,13 @@ def load_template_view(request):
     except GenerationTemplate.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Шаблон не найден'})
 
-@login_required
+@token_required
 @require_POST
 def delete_template_view(request):
+    # Шаблоны требуют User, в системе токенов недоступны
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'error': 'Шаблоны доступны только для авторизованных пользователей'})
+    
     import json
     data = json.loads(request.body.decode('utf-8'))
     template_id = data.get('id')
@@ -730,9 +776,13 @@ def delete_template_view(request):
     except GenerationTemplate.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Шаблон не найден'})
 
-@login_required
+@token_required
 @require_POST
 def rename_template_view(request):
+    # Шаблоны требуют User, в системе токенов недоступны
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'error': 'Шаблоны доступны только для авторизованных пользователей'})
+    
     import json
     data = json.loads(request.body.decode('utf-8'))
     template_id = data.get('id')
@@ -749,9 +799,13 @@ def rename_template_view(request):
     except GenerationTemplate.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Шаблон не найден'})
 
-@login_required
+@token_required
 @require_POST
 def set_default_template_view(request):
+    # Шаблоны требуют User, в системе токенов недоступны
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'error': 'Шаблоны доступны только для авторизованных пользователей'})
+    
     import json
     data = json.loads(request.body.decode('utf-8'))
     template_id = data.get('id')
@@ -875,10 +929,7 @@ def telegram_webhook(request):
     Обрабатывает команды и кнопки от пользователей Telegram,
     генерирует токены доступа и отправляет ссылки.
     
-    Безопасность: 
-    - Проверяет секретный токен в заголовках запроса
-    - Валидирует структуру данных от Telegram
-    - Rate limiting через middleware
+    Безопасность: Проверяет секретный токен в заголовках запроса.
     
     Args:
         request: POST запрос от Telegram API
@@ -890,38 +941,19 @@ def telegram_webhook(request):
     from django.conf import settings
     from datetime import timedelta
     from django.utils import timezone
-    from .security import WebhookSecurity, log_security_event
-    from ipware import get_client_ip
     
-    # Проверка безопасности webhook
-    is_valid, error_msg = WebhookSecurity.verify_telegram_request(
-        request,
-        getattr(settings, 'TELEGRAM_WEBHOOK_SECRET', '')
-    )
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
     
-    if not is_valid:
-        client_ip, _ = get_client_ip(request)
-        log_security_event(
-            'webhook_unauthorized',
-            f"ip:{client_ip}",
-            f"Invalid webhook request: {error_msg}",
-            'WARNING'
-        )
+    # Простая верификация через секретный токен
+    secret_token = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
+    expected_token = getattr(settings, 'TELEGRAM_WEBHOOK_SECRET', None)
+    
+    if not expected_token or secret_token != expected_token:
         return JsonResponse({'error': 'Unauthorized'}, status=401)
     
     try:
         data = json.loads(request.body)
-        
-        # Валидация структуры update от Telegram
-        is_valid_update, error_msg = WebhookSecurity.validate_telegram_update(data)
-        if not is_valid_update:
-            log_security_event(
-                'webhook_invalid_data',
-                f"update_id:{data.get('update_id', 'unknown')}",
-                f"Invalid update structure: {error_msg}",
-                'WARNING'
-            )
-            return JsonResponse({'error': 'Invalid update'}, status=400)
         
         # Обработка callback_query (нажатия кнопок)
         if 'callback_query' in data:
@@ -1130,7 +1162,6 @@ def api_create_token(request):
         token_type = data.get('token_type', 'DEMO')
         expires_days = data.get('expires_days', 5)
         daily_limit = data.get('daily_limit', 5)
-        telegram_user_id = data.get('telegram_user_id')  # Опционально для анонимности
         
         # Валидация типа токена
         valid_types = ['DEMO', 'MONTHLY', 'YEARLY', 'DEVELOPER']
@@ -1140,43 +1171,9 @@ def api_create_token(request):
                 'message': f'Token type must be one of: {", ".join(valid_types)}'
             }, status=400)
         
-        # Для DEMO токенов проверяем, нет ли уже активного токена у этого пользователя
-        if token_type == 'DEMO' and telegram_user_id:
-            user_id_hash = TemporaryAccessToken.hash_telegram_user_id(telegram_user_id)
-            
-            # Проверяем наличие активного DEMO токена у этого пользователя
-            existing_token = TemporaryAccessToken.objects.filter(
-                token_type='DEMO',
-                telegram_user_id_hash=user_id_hash,
-                is_active=True,
-                expires_at__gt=timezone.now()
-            ).first()
-            
-            if existing_token:
-                # Возвращаем существующий токен вместо создания нового
-                site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
-                token_url = f"{site_url}/auth/token/{existing_token.token}/"
-                
-                return JsonResponse({
-                    'token': str(existing_token.token),
-                    'token_type': existing_token.token_type,
-                    'expires_at': existing_token.expires_at.isoformat(),
-                    'daily_limit': existing_token.daily_generations_left,
-                    'url': token_url,
-                    'created_at': existing_token.created_at.isoformat(),
-                    'is_active': existing_token.is_active,
-                    'is_existing': True,
-                    'message': 'У вас уже есть активный DEMO токен'
-                }, status=200)
-        
-        # Создаем новый токен
+        # Создаем токен
         now = timezone.now()
         expires_at = now + timedelta(days=expires_days)
-        
-        # Хешируем user_id если передан
-        user_id_hash = None
-        if telegram_user_id:
-            user_id_hash = TemporaryAccessToken.hash_telegram_user_id(telegram_user_id)
         
         token = TemporaryAccessToken.objects.create(
             token_type=token_type,
@@ -1184,8 +1181,7 @@ def api_create_token(request):
             daily_generations_left=daily_limit,
             generations_reset_date=now.date() if token_type == 'DEMO' else None,
             is_active=True,
-            total_used=0,
-            telegram_user_id_hash=user_id_hash
+            total_used=0
         )
         
         # Формируем URL токена
@@ -1200,8 +1196,7 @@ def api_create_token(request):
             'daily_limit': token.daily_generations_left,
             'url': token_url,
             'created_at': token.created_at.isoformat(),
-            'is_active': token.is_active,
-            'is_existing': False
+            'is_active': token.is_active
         }
         
         return JsonResponse(response_data, status=201)

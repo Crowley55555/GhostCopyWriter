@@ -1,81 +1,45 @@
-# ==============================================================================
-# GHOSTWRITER - Docker Compose Configuration
-# ==============================================================================
-# Включает: Django, PostgreSQL, Redis, 2 Telegram Bots, Nginx
-# Версия: 3.0 (Secure & Anonymous Edition)
-# ==============================================================================
+# Docker Compose для локальной разработки
+# Все сервисы на одной машине
 
 version: '3.8'
 
 services:
-  # =============================================================================
-  # DJANGO APPLICATION (Main Service)
-  # =============================================================================
+  # Django приложение (основной сервис)
   django:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: ghostwriter-django
     ports:
       - "8000:8000"
     environment:
-      # Django Core
-      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
-      - DEBUG=${DEBUG:-False}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,django}
-      
-      # Database
-      - DB_HOST=db
-      - DB_NAME=${DB_NAME:-ghostwriter}
-      - DB_USER=${DB_USER:-ghostwriter}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_PORT=5432
-      
-      # Redis (обязательно для безопасности)
-      - REDIS_URL=redis://redis:6379/1
-      
-      # GigaChat API
+      - DJANGO_SETTINGS_MODULE=ghostwriter.settings
       - GIGACHAT_CLIENT_ID=${GIGACHAT_CLIENT_ID}
       - GIGACHAT_CLIENT_SECRET=${GIGACHAT_CLIENT_SECRET}
-      
-      # Telegram
+      - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
+      - FLASK_GEN_URL=http://flask:5000
+      - DB_HOST=db
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${DJANGO_SECRET_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_BOT_TOKEN_PUBLIC=${TELEGRAM_BOT_TOKEN_PUBLIC}
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
-      - OWNER_TELEGRAM=${OWNER_TELEGRAM}
       - SITE_URL=${SITE_URL:-http://localhost:8000}
-      
-      # Security
-      - MAX_REQUESTS_PER_MINUTE=${MAX_REQUESTS_PER_MINUTE:-60}
-      - MAX_REQUESTS_PER_HOUR=${MAX_REQUESTS_PER_HOUR:-1000}
-      - MAX_GENERATIONS_PER_HOUR=${MAX_GENERATIONS_PER_HOUR:-50}
-      - MAX_FAILED_ATTEMPTS=${MAX_FAILED_ATTEMPTS:-5}
-      - BLOCK_DURATION_MINUTES=${BLOCK_DURATION_MINUTES:-30}
-      
-      # Logging
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./media:/app/media
       - ./staticfiles:/app/staticfiles
       - ./logs:/app/logs
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - db
+      - redis
+      - flask
     networks:
       - ghostwriter-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn --bind 0.0.0.0:8000 --workers 3 --timeout 120 ghostwriter.wsgi:application"
 
-  # =============================================================================
-  # TELEGRAM BOT - Main (Auto Token Distribution)
-  # =============================================================================
+  # Telegram Bot (отдельный контейнер)
   bot:
     build:
       context: .
@@ -83,6 +47,7 @@ services:
     container_name: ghostwriter-bot
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
       - DJANGO_API_URL=http://django:8000
       - SITE_URL=${SITE_URL:-http://localhost:8000}
     volumes:
@@ -92,47 +57,30 @@ services:
     networks:
       - ghostwriter-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "python.*bot.py"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
-  # =============================================================================
-  # TELEGRAM BOT - Public (Marketing & Onboarding)
-  # =============================================================================
-  bot-public:
-    build:
-      context: .
-      dockerfile: Dockerfile.bot-public
-    container_name: ghostwriter-bot-public
+  # Flask AI микросервис
+  flask:
+    build: ./flask_generator
+    container_name: ghostwriter-flask
+    ports:
+      - "5000:5000"
     environment:
-      - TELEGRAM_BOT_TOKEN_PUBLIC=${TELEGRAM_BOT_TOKEN_PUBLIC}
-      - OWNER_TELEGRAM=${OWNER_TELEGRAM}
+      - FLASK_ENV=production
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
     volumes:
-      - ./logs:/app/logs
-    depends_on:
-      - django
+      - ./flask_generator/logs:/app/logs
     networks:
       - ghostwriter-network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "python.*bot_public.py"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
-  # =============================================================================
-  # POSTGRESQL DATABASE
-  # =============================================================================
+  # База данных PostgreSQL
   db:
     image: postgres:15-alpine
     container_name: ghostwriter-db
     environment:
-      - POSTGRES_DB=${DB_NAME:-ghostwriter}
-      - POSTGRES_USER=${DB_USER:-ghostwriter}
+      - POSTGRES_DB=ghostwriter
+      - POSTGRES_USER=ghostwriter
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -141,18 +89,16 @@ services:
       - ghostwriter-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ghostwriter}"]
+      test: ["CMD-SHELL", "pg_isready -U ghostwriter"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # =============================================================================
-  # REDIS CACHE (Required for Security & Rate Limiting)
-  # =============================================================================
+  # Redis для кеширования
   redis:
     image: redis:7-alpine
     container_name: ghostwriter-redis
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     networks:
@@ -164,9 +110,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # =============================================================================
-  # NGINX REVERSE PROXY (Optional for Production)
-  # =============================================================================
+  # Nginx reverse proxy
   nginx:
     image: nginx:alpine
     container_name: ghostwriter-nginx
@@ -174,7 +118,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
       - ./media:/var/www/media:ro
       - ./staticfiles:/var/www/static:ro
@@ -183,24 +127,11 @@ services:
     networks:
       - ghostwriter-network
     restart: unless-stopped
-    profiles:
-      - production
 
-# =============================================================================
-# VOLUMES
-# =============================================================================
 volumes:
   postgres_data:
-    driver: local
   redis_data:
-    driver: local
 
-# =============================================================================
-# NETWORKS
-# =============================================================================
 networks:
   ghostwriter-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.28.0.0/16

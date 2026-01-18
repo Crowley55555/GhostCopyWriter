@@ -1,194 +1,108 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Лимит исчерпан - Ghostwriter</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .card {
-            max-width: 700px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-        .card-header {
-            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-            color: white;
-            border-radius: 15px 15px 0 0 !important;
-            padding: 2rem;
-        }
-        .card-body {
-            padding: 2rem;
-        }
-        .icon-container {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-        }
-        .btn-telegram {
-            background: linear-gradient(135deg, #0088cc 0%, #00aced 100%);
-            border: none;
-            color: white;
-            padding: 0.75rem 2rem;
-            font-size: 1.1rem;
-            border-radius: 50px;
-            transition: all 0.3s;
-        }
-        .btn-telegram:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,136,204,0.4);
-            color: white;
-        }
-        .btn-home {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: white;
-            padding: 0.75rem 2rem;
-            font-size: 1.1rem;
-            border-radius: 50px;
-            transition: all 0.3s;
-        }
-        .btn-home:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102,126,234,0.4);
-            color: white;
-        }
-        .stats-box {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin: 1rem 0;
-        }
-        .stat-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid #dee2e6;
-        }
-        .stat-item:last-child {
-            border-bottom: none;
-        }
-        .upgrade-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin: 1rem 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="card">
-            <div class="card-header text-center">
-                <div class="icon-container">⏰</div>
-                <h2 class="mb-0">Дневной лимит исчерпан</h2>
-            </div>
-            <div class="card-body">
-                <p class="lead text-center mb-4">
-                    Вы достигли дневного лимита генераций для вашего токена.
-                </p>
-
-                {% if token_type == 'DEMO' %}
-                <div class="stats-box">
-                    <h5 class="mb-3">📊 Статистика использования:</h5>
-                    <div class="stat-item">
-                        <span><strong>Тип токена:</strong></span>
-                        <span class="badge bg-info">{{ token_type }}</span>
-                    </div>
-                    <div class="stat-item">
-                        <span><strong>Генераций осталось сегодня:</strong></span>
-                        <span class="badge bg-danger">{{ daily_generations_left }} из 5</span>
-                    </div>
-                    <div class="stat-item">
-                        <span><strong>Следующий сброс:</strong></span>
-                        <span><strong>Завтра в 00:00</strong></span>
-                    </div>
+{% extends 'generator/index.html' %}
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-lg border-0 fade-in">
+                <div class="card-header bg-warning bg-gradient text-dark text-center">
+                    <div class="mb-3" style="font-size: 4rem;">⏰</div>
+                    <h2 class="mb-0">Дневной лимит исчерпан</h2>
                 </div>
-
-                <div class="alert alert-info mt-4">
-                    <h5 class="alert-heading">⏳ Что делать?</h5>
-                    <ul class="mb-0">
-                        <li><strong>Подождите до завтра</strong> - лимит автоматически обновится</li>
-                        <li><strong>Обновите тариф</strong> - получите безлимитные генерации</li>
-                        <li><strong>Получите новый DEMO токен</strong> - еще 5 генераций</li>
-                    </ul>
-                </div>
-
-                <div class="upgrade-card">
-                    <h5>🚀 Обновите тариф для безлимитного доступа!</h5>
-                    <p class="mb-3">
-                        Получите полный доступ к генератору без ограничений:
+                <div class="card-body p-4">
+                    <p class="lead text-center mb-4">
+                        Вы достигли дневного лимита генераций для вашего токена.
                     </p>
-                    <ul>
-                        <li>📅 <strong>30 дней</strong> - безлимитные генерации</li>
-                        <li>📆 <strong>1 год</strong> - безлимитные генерации</li>
-                    </ul>
-                </div>
-                {% else %}
-                <div class="alert alert-warning">
-                    <h5 class="alert-heading">⚠️ Неожиданная ошибка</h5>
-                    <p class="mb-0">
-                        Для платных токенов не должно быть лимита генераций.
-                        Пожалуйста, обратитесь в поддержку через Telegram бота.
-                    </p>
-                </div>
-                {% endif %}
 
-                <div class="text-center mt-4">
-                    <a href="https://t.me/YourGhostwriterBot" class="btn btn-telegram btn-lg me-2" target="_blank">
-                        <i class="fab fa-telegram"></i> Обновить тариф
-                    </a>
-                    <a href="{% url 'home' %}" class="btn btn-home btn-lg">
-                        🏠 На главную
-                    </a>
-                </div>
+                    {% if token_type == 'DEMO' %}
+                    <div class="alert alert-secondary text-start mb-4">
+                        <h5 class="alert-heading">📊 Статистика использования:</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                            <span><strong>Тип токена:</strong></span>
+                            <span class="badge bg-info">{{ token_type }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                            <span><strong>Генераций осталось сегодня:</strong></span>
+                            <span class="badge bg-danger">{{ daily_generations_left }} из 5</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><strong>Следующий сброс:</strong></span>
+                            <span><strong>Завтра в 00:00</strong></span>
+                        </div>
+                    </div>
 
-                <div class="mt-4 text-center">
-                    <h6>💡 Преимущества платных тарифов:</h6>
-                    <div class="row mt-3">
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5>✅ Безлимитные генерации</h5>
-                                    <p class="text-muted mb-0">
-                                        <small>Создавайте контент без ограничений</small>
-                                    </p>
+                    <div class="alert alert-info">
+                        <h5 class="alert-heading">⏳ Что делать?</h5>
+                        <ul class="mb-0">
+                            <li><strong>Подождите до завтра</strong> - лимит автоматически обновится</li>
+                            <li><strong>Обновите тариф</strong> - получите безлимитные генерации</li>
+                            <li><strong>Получите новый DEMO токен</strong> - еще 5 генераций</li>
+                        </ul>
+                    </div>
+
+                    <div class="alert alert-primary text-white">
+                        <h5 class="alert-heading">🚀 Обновите тариф для безлимитного доступа!</h5>
+                        <p class="mb-3">
+                            Получите полный доступ к генератору без ограничений:
+                        </p>
+                        <ul class="mb-0">
+                            <li>📅 <strong>30 дней</strong> - безлимитные генерации</li>
+                            <li>📆 <strong>1 год</strong> - безлимитные генерации</li>
+                        </ul>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <h5 class="alert-heading">⚠️ Неожиданная ошибка</h5>
+                        <p class="mb-0">
+                            Для платных токенов не должно быть лимита генераций.
+                            Пожалуйста, обратитесь в поддержку через Telegram бота.
+                        </p>
+                    </div>
+                    {% endif %}
+
+                    <div class="text-center mt-4">
+                        <a href="https://t.me/YourGhostwriterBot" class="btn btn-primary btn-lg me-2" target="_blank">
+                            <i class="bi bi-telegram me-2"></i>Обновить тариф
+                        </a>
+                        <a href="{% url 'home' %}" class="btn btn-outline-primary btn-lg">
+                            <i class="bi bi-house me-2"></i>На главную
+                        </a>
+                    </div>
+
+                    <div class="mt-4 text-center">
+                        <h6>💡 Преимущества платных тарифов:</h6>
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <div class="card mb-3">
+                                    <div class="card-body text-center">
+                                        <h5>✅ Безлимитные генерации</h5>
+                                        <p class="text-muted mb-0">
+                                            <small>Создавайте контент без ограничений</small>
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5>⚡ Приоритетная обработка</h5>
-                                    <p class="text-muted mb-0">
-                                        <small>Быстрая генерация без очередей</small>
-                                    </p>
+                            <div class="col-md-6">
+                                <div class="card mb-3">
+                                    <div class="card-body text-center">
+                                        <h5>⚡ Приоритетная обработка</h5>
+                                        <p class="text-muted mb-0">
+                                            <small>Быстрая генерация без очередей</small>
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="mt-4 text-center text-muted">
-                    <small>
-                        📊 Следующий сброс лимита: <strong>завтра в 00:00</strong><br>
-                        🔒 Все ваши данные сохранены и будут доступны после обновления лимита
-                    </small>
+                    <div class="mt-4 text-center text-muted">
+                        <small>
+                            📊 Следующий сброс лимита: <strong>завтра в 00:00</strong><br>
+                            🔒 Все ваши данные сохранены и будут доступны после обновления лимита
+                        </small>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://kit.fontawesome.com/your-fontawesome-kit.js" crossorigin="anonymous"></script>
-</body>
-</html>
+</div>
+{% endblock %}

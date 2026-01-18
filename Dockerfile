@@ -1,22 +1,13 @@
-# ==============================================================================
-# GHOSTWRITER - Django Application (Main Service)
-# ==============================================================================
-# Включает: Django, Security, Токены, APScheduler, Redis
-# Версия: 3.0 (Secure & Anonymous Edition)
-# ==============================================================================
+# Django Application Dockerfile
+# Обновлен под систему токенов и Telegram бота
 
 FROM python:3.11-slim
-
-LABEL maintainer="Ghostwriter Team"
-LABEL version="3.0"
-LABEL description="Django application with security, token system, and APScheduler"
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y \
     gcc \
     gettext \
     postgresql-client \
-    libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -28,38 +19,32 @@ WORKDIR /app
 
 # Копирование requirements и установка Python зависимостей
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir gunicorn
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Копирование проекта
-COPY --chown=django:django . .
+COPY . .
 
 # Создание необходимых директорий
-RUN mkdir -p /app/media /app/staticfiles /app/logs && \
-    chown -R django:django /app
+RUN mkdir -p /app/media /app/staticfiles /app/logs
 
-# Переключение на пользователя django
+# Установка прав доступа
+RUN chown -R django:django /app
 USER django
 
+# Сбор статических файлов
+RUN python manage.py collectstatic --noinput --settings=ghostwriter.settings
+
 # Переменные окружения
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    DJANGO_SETTINGS_MODULE=ghostwriter.settings
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DJANGO_SETTINGS_MODULE=ghostwriter.settings
 
 # Открытие порта
 EXPOSE 8000
 
 # Проверка здоровья
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/ || exit 1
-
-# Entrypoint скрипт
-COPY --chown=django:django docker-entrypoint.sh /app/
-USER root
-RUN chmod +x /app/docker-entrypoint.sh
-USER django
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/ || exit 1
 
 # Команда запуска
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "300", "--access-logfile", "-", "--error-logfile", "-", "ghostwriter.wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "ghostwriter.wsgi:application"]

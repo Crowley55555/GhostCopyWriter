@@ -12,40 +12,78 @@ from gigachat.models import Chat, Messages, MessagesRole
 
 load_dotenv()
 
+# Новый способ: один Authorization Key (рекомендуется)
+GIGACHAT_CREDENTIALS = os.getenv("GIGACHAT_CREDENTIALS")
+
+# Старый способ: Client ID + Client Secret (для обратной совместимости)
 CLIENT_ID = os.getenv("GIGACHAT_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GIGACHAT_CLIENT_SECRET")
+
 SCOPE = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS")
 
 # Отладочный вывод для диагностики проблем с переменными окружения
-print("CLIENT_ID:", repr(CLIENT_ID))
-print("CLIENT_SECRET:", repr(CLIENT_SECRET))
-print("SCOPE:", repr(SCOPE))
+print("=" * 60)
+print("GigaChat Configuration:")
+print(f"  GIGACHAT_CREDENTIALS: {'SET (' + str(len(GIGACHAT_CREDENTIALS)) + ' chars)' if GIGACHAT_CREDENTIALS else 'NOT SET'}")
+print(f"  CLIENT_ID: {'SET' if CLIENT_ID else 'NOT SET'}")
+print(f"  CLIENT_SECRET: {'SET' if CLIENT_SECRET else 'NOT SET'}")
+print(f"  SCOPE: {SCOPE}")
+print("=" * 60)
 
-# Проверяем, что все переменные заданы
-if not CLIENT_ID or not CLIENT_SECRET:
-    print("WARNING: CLIENT_ID или CLIENT_SECRET не заданы!")
-    print("Убедитесь, что в .env файле есть переменные:")
-    print("GIGACHAT_CLIENT_ID=ваш_client_id")
-    print("GIGACHAT_CLIENT_SECRET=ваш_client_secret")
-else:
-    print("OK: Переменные окружения настроены корректно")
-
-def _get_base64_credentials():
-    creds = f"{CLIENT_ID}:{CLIENT_SECRET}".encode("utf-8")
-    return base64.b64encode(creds).decode()
+def _get_credentials():
+    """
+    Получает credentials для GigaChat API.
+    
+    Поддерживает два способа:
+    1. GIGACHAT_CREDENTIALS - готовый Authorization Key (рекомендуется)
+    2. CLIENT_ID + CLIENT_SECRET - старый способ (будет закодирован в base64)
+    """
+    # Способ 1: Готовый Authorization Key (рекомендуется)
+    if GIGACHAT_CREDENTIALS:
+        print("Используем GIGACHAT_CREDENTIALS (готовый ключ)")
+        return GIGACHAT_CREDENTIALS
+    
+    # Способ 2: Client ID + Client Secret (старый способ)
+    if CLIENT_ID and CLIENT_SECRET:
+        # Проверяем, не являются ли они одинаковыми (значит это готовый ключ)
+        if CLIENT_ID == CLIENT_SECRET:
+            print("CLIENT_ID == CLIENT_SECRET, используем как готовый ключ")
+            return CLIENT_ID
+        
+        print("Используем CLIENT_ID:CLIENT_SECRET (base64)")
+        creds = f"{CLIENT_ID}:{CLIENT_SECRET}".encode("utf-8")
+        return base64.b64encode(creds).decode()
+    
+    # Ничего не настроено
+    print("WARNING: GigaChat credentials не настроены!")
+    print("Добавьте в .env файл:")
+    print("  GIGACHAT_CREDENTIALS=ваш_authorization_key")
+    print("или:")
+    print("  GIGACHAT_CLIENT_ID=ваш_client_id")
+    print("  GIGACHAT_CLIENT_SECRET=ваш_client_secret")
+    return None
 
 def _init_client():
+    credentials = _get_credentials()
+    if not credentials:
+        raise ValueError("GigaChat credentials не настроены")
     return GigaChat(
-        credentials=_get_base64_credentials(),
+        credentials=credentials,
         scope=SCOPE,
-        verify_ssl_certs=False
+        verify_ssl_certs=False,
+        timeout=120  # 2 минуты для текста
     )
 
 def _init_direct_client():
     """Инициализация прямого клиента GigaChat для генерации изображений"""
+    credentials = _get_credentials()
+    if not credentials:
+        raise ValueError("GigaChat credentials не настроены")
     return GigaChatDirect(
-        credentials=_get_base64_credentials(),
-        verify_ssl_certs=False
+        credentials=credentials,
+        scope=SCOPE,
+        verify_ssl_certs=False,
+        timeout=300  # 5 минут для изображений (они генерируются дольше)
     )
 
 # --- SYSTEM PROMPT PREAMBLE ---
