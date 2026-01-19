@@ -43,13 +43,12 @@ class TokenGenerator:
     def __init__(self):
         self.site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
     
-    def generate_demo_token(self, days=5, daily_limit=5, note=None):
+    def generate_demo_token(self, days=7, note=None):
         """
         Генерирует DEMO токен без проверок на дубликаты
         
         Args:
-            days (int): Срок действия в днях (по умолчанию 5)
-            daily_limit (int): Лимит генераций в день (по умолчанию 5)
+            days (int): Срок действия в днях (по умолчанию 7)
             note (str): Заметка (например, имя тестера)
         
         Returns:
@@ -61,8 +60,8 @@ class TokenGenerator:
         token = TemporaryAccessToken.objects.create(
             token_type='DEMO',
             expires_at=expires_at,
-            daily_generations_left=daily_limit,
-            generations_reset_date=now.date(),
+            daily_generations_left=-1,  # Безлимит
+            generations_reset_date=None,
             is_active=True,
             total_used=0
         )
@@ -120,15 +119,14 @@ class TokenGenerator:
         url = f"{self.site_url}/auth/token/{token.token}/"
         return token, url
     
-    def generate_bulk_tokens(self, count=10, token_type='DEMO', days=5, daily_limit=5):
+    def generate_bulk_tokens(self, count=10, token_type='DEMO', days=7):
         """
         Массовая генерация токенов
         
         Args:
             count (int): Количество токенов
             token_type (str): Тип токена
-            days (int): Срок действия
-            daily_limit (int): Дневной лимит
+            days (int): Срок действия (для DEMO)
         
         Returns:
             list: Список кортежей (token, url)
@@ -136,7 +134,7 @@ class TokenGenerator:
         tokens = []
         for i in range(count):
             if token_type == 'DEMO':
-                token, url = self.generate_demo_token(days, daily_limit)
+                token, url = self.generate_demo_token(days)
             elif token_type == 'MONTHLY':
                 token, url = self.generate_monthly_token()
             elif token_type == 'YEARLY':
@@ -211,7 +209,7 @@ def print_header():
 def print_menu():
     """Главное меню"""
     print("\n📋 Выберите действие:\n")
-    print("  1. 🆓 Сгенерировать DEMO токен (5 дней, 5 ген./день)")
+    print("  1. 🆓 Сгенерировать DEMO токен (7 дней, безлимит)")
     print("  2. 📅 Сгенерировать MONTHLY токен (30 дней, безлимит)")
     print("  3. 📆 Сгенерировать YEARLY токен (365 дней, безлимит)")
     print("  4. 👨‍💻 Сгенерировать DEVELOPER токен (бессрочный, безлимит)")
@@ -233,11 +231,7 @@ def print_token_info(token, url):
     print(f"🔑 UUID: {token.token}")
     print(f"📅 Создан: {token.created_at.strftime('%d.%m.%Y %H:%M')}")
     print(f"⏰ Истекает: {token.expires_at.strftime('%d.%m.%Y %H:%M')}")
-    
-    if token.token_type == 'DEMO':
-        print(f"⚡ Лимит: {token.daily_generations_left} генераций/день")
-    else:
-        print(f"⚡ Лимит: Безлимит")
+    print(f"⚡ Лимит: Безлимит")
     
     print(f"\n🔗 ССЫЛКА ДЛЯ ПОЛЬЗОВАТЕЛЯ:")
     print(f"   {url}")
@@ -257,7 +251,7 @@ def interactive_mode():
     generator = TokenGenerator()
     
     # Настройки по умолчанию
-    settings_demo = {'days': 5, 'daily_limit': 5}
+    settings_demo = {'days': 7}
     
     while True:
         print_header()
@@ -267,10 +261,9 @@ def interactive_mode():
             choice = input("Ваш выбор: ").strip()
             
             if choice == '1':
-                # DEMO токен
+                # DEMO токен (7 дней, безлимит)
                 token, url = generator.generate_demo_token(
-                    days=settings_demo['days'],
-                    daily_limit=settings_demo['daily_limit']
+                    days=settings_demo['days']
                 )
                 print_token_info(token, url)
                 input("\nНажмите Enter для продолжения...")
@@ -311,8 +304,7 @@ def interactive_mode():
                 tokens = generator.generate_bulk_tokens(
                     count=count,
                     token_type=token_type,
-                    days=settings_demo['days'],
-                    daily_limit=settings_demo['daily_limit']
+                    days=settings_demo['days']
                 )
                 
                 print(f"\n✅ Создано {len(tokens)} токенов:\n")
@@ -395,18 +387,15 @@ def interactive_mode():
             elif choice == '9':
                 # Настройки
                 print("\n⚙️ Настройки генерации DEMO токенов\n")
+                print("ℹ️ DEMO токены теперь без лимита генераций (только срок действия)\n")
                 
                 days = input(f"Срок действия в днях (текущее: {settings_demo['days']}): ").strip()
                 if days:
                     settings_demo['days'] = int(days)
                 
-                limit = input(f"Лимит генераций в день (текущее: {settings_demo['daily_limit']}): ").strip()
-                if limit:
-                    settings_demo['daily_limit'] = int(limit)
-                
                 print(f"\n✅ Настройки обновлены:")
                 print(f"   Срок: {settings_demo['days']} дней")
-                print(f"   Лимит: {settings_demo['daily_limit']} генераций/день")
+                print(f"   Лимит: Безлимит")
                 
                 input("\nНажмите Enter для продолжения...")
             

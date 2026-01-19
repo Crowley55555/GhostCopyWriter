@@ -48,11 +48,7 @@
               <span>{{ token.expires_at|date:'d.m.Y H:i' }}</span>
             {% endif %}
           </div>
-          {% if is_demo %}
-          <div class="mb-2"><strong>Генераций осталось сегодня:</strong> <span class="badge bg-info">{{ daily_left }} из 5</span></div>
-          {% else %}
           <div class="mb-2"><strong>Лимит генераций:</strong> <span class="badge bg-success">Безлимит</span></div>
-          {% endif %}
           <div class="mb-2"><strong>Всего использовано:</strong> <span>{{ token.total_used }}</span></div>
           {% if token.last_used %}
           <div class="mb-2"><strong>Последнее использование:</strong> <span>{{ token.last_used|date:'d.m.Y H:i' }}</span></div>

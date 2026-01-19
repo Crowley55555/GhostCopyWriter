@@ -65,19 +65,9 @@ class TokenAccessMiddleware:
                 self._clear_session(request)
                 return redirect('invalid_token_page')
             
-            # Для DEMO токенов проверяем дневной лимит
-            if token.token_type == 'DEMO':
-                # Сбрасываем счетчик если новый день
-                token.reset_daily_limit()
-                
-                # Обновляем данные в сессии
-                request.session['daily_generations_left'] = token.daily_generations_left
-                
-                # Проверяем лимит только для запросов генерации
-                # (остальные страницы доступны даже при исчерпании лимита)
-                if request.path.startswith('/generator/') or request.path.startswith('/regenerate-'):
-                    if token.daily_generations_left <= 0:
-                        return redirect('limit_exceeded_page')
+            # DEMO токены теперь без лимита генераций (7 дней)
+            # Оставляем обновление сессии для совместимости
+            request.session['daily_generations_left'] = -1  # -1 = безлимит
         
         except TemporaryAccessToken.DoesNotExist:
             # Токен не найден в базе - очищаем сессию

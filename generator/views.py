@@ -827,7 +827,7 @@ def token_auth_view(request, token):
     Обработка входа по временному токену
     
     Проверяет валидность токена и создает анонимную сессию для пользователя.
-    DEMO токены: 5 дней + 5 генераций в день
+    DEMO токены: 7 дней, безлимитные генерации
     Платные токены: только временное ограничение
     
     Args:
@@ -848,21 +848,7 @@ def token_auth_view(request, token):
             expires_at__gt=timezone.now()
         )
         
-        # Проверка для DEMO токенов
-        if access_token.token_type == 'DEMO':
-            # Сброс счётчика если новый день
-            if access_token.generations_reset_date != timezone.now().date():
-                access_token.daily_generations_left = 5
-                access_token.generations_reset_date = timezone.now().date()
-                access_token.save()
-            
-            # Проверка лимита (показываем предупреждение, но разрешаем вход)
-            if access_token.daily_generations_left <= 0:
-                messages.warning(
-                    request, 
-                    'Лимит генераций на сегодня исчерпан. Вы можете просматривать существующий контент.'
-                )
-        
+        # DEMO токены теперь без лимита генераций (7 дней)
         # Создаём анонимную сессию
         request.session['access_token'] = str(token)
         request.session['token_type'] = access_token.token_type
@@ -962,14 +948,14 @@ def telegram_webhook(request):
             action = callback['data']
             
             if action == 'demo':
-                # Создаём DEMO токен
+                # Создаём DEMO токен (7 дней, безлимит)
                 from .models import TemporaryAccessToken
                 
                 token = TemporaryAccessToken.objects.create(
                     token_type='DEMO',
-                    expires_at=timezone.now() + timedelta(days=5),
-                    daily_generations_left=5,
-                    generations_reset_date=timezone.now().date()
+                    expires_at=timezone.now() + timedelta(days=7),
+                    daily_generations_left=-1,  # -1 = безлимит
+                    generations_reset_date=None
                 )
                 
                 # Формируем ссылку
