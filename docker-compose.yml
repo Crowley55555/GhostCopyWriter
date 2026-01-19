@@ -1,45 +1,69 @@
-# Docker Compose для локальной разработки
-# Все сервисы на одной машине
+# =============================================================================
+# GHOSTWRITER - Docker Compose для локальной разработки
+# =============================================================================
+# Запуск: docker-compose up -d
+# Логи: docker-compose logs -f
+# Остановка: docker-compose down
+# =============================================================================
 
 version: '3.8'
 
 services:
-  # Django приложение (основной сервис)
+  # ===========================================================================
+  # Django приложение
+  # ===========================================================================
   django:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: ghostwriter-django
     ports:
       - "8000:8000"
     environment:
       - DJANGO_SETTINGS_MODULE=ghostwriter.settings
-      - GIGACHAT_CLIENT_ID=${GIGACHAT_CLIENT_ID}
-      - GIGACHAT_CLIENT_SECRET=${GIGACHAT_CLIENT_SECRET}
-      - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
-      - FLASK_GEN_URL=http://flask:5000
+      - DEBUG=True
+      # База данных
       - DB_HOST=db
-      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=ghostwriter
+      - DB_USER=ghostwriter
+      - DB_PASSWORD=${DB_PASSWORD:-ghostwriter_dev}
+      # Redis
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${DJANGO_SECRET_KEY}
+      # GigaChat
+      - GIGACHAT_CREDENTIALS=${GIGACHAT_CREDENTIALS}
+      - GIGACHAT_SCOPE=${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
+      # Flask микросервис
+      - FLASK_GEN_URL=http://flask:5000
+      # Шифрование
+      - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
+      # Django
+      - SECRET_KEY=${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
+      - SITE_URL=${SITE_URL:-http://localhost:8000}
+      # Telegram
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
-      - SITE_URL=${SITE_URL:-http://localhost:8000}
     volumes:
       - ./media:/app/media
       - ./staticfiles:/app/staticfiles
       - ./logs:/app/logs
     depends_on:
-      - db
-      - redis
-      - flask
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - ghostwriter-network
     restart: unless-stopped
-    command: >
-      sh -c "python manage.py migrate &&
-             python manage.py collectstatic --noinput &&
-             gunicorn --bind 0.0.0.0:8000 --workers 3 --timeout 120 ghostwriter.wsgi:application"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Telegram Bot (отдельный контейнер)
+  # ===========================================================================
+  # Telegram Bot
+  # ===========================================================================
   bot:
     build:
       context: .
@@ -53,19 +77,22 @@ services:
     volumes:
       - ./logs:/app/logs
     depends_on:
-      - django
+      django:
+        condition: service_healthy
     networks:
       - ghostwriter-network
     restart: unless-stopped
 
-  # Flask AI микросервис
+  # ===========================================================================
+  # Flask AI микросервис (OpenAI)
+  # ===========================================================================
   flask:
     build: ./flask_generator
     container_name: ghostwriter-flask
     ports:
       - "5000:5000"
     environment:
-      - FLASK_ENV=production
+      - FLASK_ENV=development
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
     volumes:
@@ -73,15 +100,23 @@ services:
     networks:
       - ghostwriter-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
-  # База данных PostgreSQL
+  # ===========================================================================
+  # PostgreSQL
+  # ===========================================================================
   db:
     image: postgres:15-alpine
     container_name: ghostwriter-db
     environment:
       - POSTGRES_DB=ghostwriter
       - POSTGRES_USER=ghostwriter
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-ghostwriter_dev}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backups:/backups
@@ -89,12 +124,15 @@ services:
       - ghostwriter-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ghostwriter"]
+      test: ["CMD-SHELL", "pg_isready -U ghostwriter -d ghostwriter"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
-  # Redis для кеширования
+  # ===========================================================================
+  # Redis
+  # ===========================================================================
   redis:
     image: redis:7-alpine
     container_name: ghostwriter-redis
@@ -109,29 +147,20 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+      start_period: 5s
 
-  # Nginx reverse proxy
-  nginx:
-    image: nginx:alpine
-    container_name: ghostwriter-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
-      - ./media:/var/www/media:ro
-      - ./staticfiles:/var/www/static:ro
-    depends_on:
-      - django
-    networks:
-      - ghostwriter-network
-    restart: unless-stopped
-
+# =============================================================================
+# Volumes
+# =============================================================================
 volumes:
   postgres_data:
+    driver: local
   redis_data:
+    driver: local
 
+# =============================================================================
+# Networks
+# =============================================================================
 networks:
   ghostwriter-network:
     driver: bridge

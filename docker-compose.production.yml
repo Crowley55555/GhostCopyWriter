@@ -1,44 +1,66 @@
-# Docker Compose для продакшена
-# Django + Bot на российском сервере, Flask на зарубежном сервере
+# =============================================================================
+# GHOSTWRITER - Docker Compose для PRODUCTION
+# =============================================================================
+# Развертывание на российском сервере: Django + Bot + PostgreSQL + Redis + Nginx
+# Flask микросервис деплоится отдельно на зарубежном сервере
+# =============================================================================
+# Запуск: docker-compose -f docker-compose.production.yml up -d
+# Логи: docker-compose -f docker-compose.production.yml logs -f
+# =============================================================================
 
 version: '3.8'
 
 services:
-  # Django приложение (российский сервер)
+  # ===========================================================================
+  # Django приложение (основной сервис)
+  # ===========================================================================
   django:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: ghostwriter-django-prod
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
       - DJANGO_SETTINGS_MODULE=ghostwriter.production_settings
-      - GIGACHAT_CLIENT_ID=${GIGACHAT_CLIENT_ID}
-      - GIGACHAT_CLIENT_SECRET=${GIGACHAT_CLIENT_SECRET}
-      - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
-      - FLASK_GEN_URL=${FLASK_EXTERNAL_URL}
+      - DEBUG=False
+      # База данных PostgreSQL
       - DB_HOST=db
+      - DB_NAME=ghostwriter
+      - DB_USER=ghostwriter
       - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=5432
+      # Redis
       - REDIS_URL=redis://redis:6379/0
+      # GigaChat (российский AI)
+      - GIGACHAT_CREDENTIALS=${GIGACHAT_CREDENTIALS}
+      - GIGACHAT_SCOPE=${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
+      # Flask микросервис (зарубежный сервер)
+      - FLASK_EXTERNAL_URL=${FLASK_EXTERNAL_URL}
+      # Шифрование
+      - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
+      # Django Security
       - SECRET_KEY=${DJANGO_SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - USE_HTTPS=true
+      # Site URL
+      - SITE_URL=${SITE_URL}
+      # Telegram
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
-      - SITE_URL=${SITE_URL}
     volumes:
-      - /opt/ghostwriter/media:/app/media
-      - /opt/ghostwriter/staticfiles:/app/staticfiles
-      - /opt/ghostwriter/logs:/app/logs
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+      - logs_data:/app/logs
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - ghostwriter-network
-    restart: unless-stopped
-    command: >
-      sh -c "python manage.py migrate &&
-             python manage.py collectstatic --noinput &&
-             gunicorn --bind 0.0.0.0:8000 --workers 4 --timeout 120 --max-requests 1000 ghostwriter.wsgi:application"
+    restart: always
     deploy:
       resources:
         limits:
@@ -52,9 +74,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
-  # Telegram Bot (российский сервер)
+  # ===========================================================================
+  # Telegram Bot (polling mode)
+  # ===========================================================================
   bot:
     build:
       context: .
@@ -66,12 +90,13 @@ services:
       - DJANGO_API_URL=http://django:8000
       - SITE_URL=${SITE_URL}
     volumes:
-      - /opt/ghostwriter/logs:/app/logs
+      - logs_data:/app/logs
     depends_on:
-      - django
+      django:
+        condition: service_healthy
     networks:
       - ghostwriter-network
-    restart: unless-stopped
+    restart: always
     deploy:
       resources:
         limits:
@@ -81,7 +106,9 @@ services:
           cpus: '0.25'
           memory: 128M
 
-  # PostgreSQL (российский сервер)
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
   db:
     image: postgres:15-alpine
     container_name: ghostwriter-db-prod
@@ -89,14 +116,13 @@ services:
       - POSTGRES_DB=ghostwriter
       - POSTGRES_USER=ghostwriter
       - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_INITDB_ARGS=--locale=ru_RU.UTF-8
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
-      - /opt/ghostwriter/postgres:/var/lib/postgresql/data
-      - /opt/ghostwriter/backups:/backups
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
     networks:
       - ghostwriter-network
-    restart: unless-stopped
+    restart: always
     deploy:
       resources:
         limits:
@@ -106,33 +132,42 @@ services:
           cpus: '0.5'
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ghostwriter"]
+      test: ["CMD-SHELL", "pg_isready -U ghostwriter -d ghostwriter"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
-  # Redis (российский сервер)
+  # ===========================================================================
+  # Redis Cache
+  # ===========================================================================
   redis:
     image: redis:7-alpine
     container_name: ghostwriter-redis-prod
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
-      - /opt/ghostwriter/redis:/data
+      - redis_data:/data
     networks:
       - ghostwriter-network
-    restart: unless-stopped
+    restart: always
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
+      start_period: 10s
 
-  # Nginx (российский сервер)
+  # ===========================================================================
+  # Nginx Reverse Proxy
+  # ===========================================================================
   nginx:
     image: nginx:alpine
     container_name: ghostwriter-nginx-prod
@@ -141,21 +176,50 @@ services:
       - "443:443"
     volumes:
       - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
-      - /opt/ghostwriter/ssl:/etc/nginx/ssl:ro
-      - /opt/ghostwriter/media:/var/www/media:ro
-      - /opt/ghostwriter/staticfiles:/var/www/static:ro
-      - /opt/ghostwriter/logs/nginx:/var/log/nginx
+      - ./ssl:/etc/nginx/ssl:ro
+      - static_data:/var/www/static:ro
+      - media_data:/var/www/media:ro
+      - nginx_logs:/var/log/nginx
     depends_on:
-      - django
+      django:
+        condition: service_healthy
     networks:
       - ghostwriter-network
-    restart: unless-stopped
+    restart: always
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+# =============================================================================
+# Volumes (Persistent Storage)
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  media_data:
+    driver: local
+  static_data:
+    driver: local
+  logs_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
 networks:
   ghostwriter-network:
     driver: bridge

@@ -61,17 +61,20 @@ TEMPLATES = [
 WSGI_APPLICATION = 'ghostwriter.wsgi.application'
 
 # Database для продакшена (PostgreSQL)
+_db_options = {}
+if os.environ.get('DB_SSLMODE'):
+    _db_options['sslmode'] = os.environ.get('DB_SSLMODE')
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.environ.get('DB_NAME', 'ghostwriter'),
         'USER': os.environ.get('DB_USER', 'ghostwriter'),
         'PASSWORD': os.environ.get('DB_PASSWORD'),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'HOST': os.environ.get('DB_HOST', 'db'),
         'PORT': os.environ.get('DB_PORT', '5432'),
-        'OPTIONS': {
-            'sslmode': 'require',
-        },
+        'CONN_MAX_AGE': 60,
+        'OPTIONS': _db_options,
     }
 }
 

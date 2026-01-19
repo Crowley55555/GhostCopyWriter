@@ -36,6 +36,7 @@ app = Flask(__name__)
 # =============================================================================
 
 @app.route('/', methods=['GET'])
+@app.route('/health', methods=['GET'])
 def health_check():
     """
     Health check endpoint для проверки статуса API
@@ -46,7 +47,7 @@ def health_check():
     return jsonify({
         'status': 'ok',
         'message': 'Flask Generator API is running',
-        'endpoints': ['/generate-text', '/generate-image']
+        'endpoints': ['/generate-text', '/generate-image', '/health']
     })
 
 @app.route('/test', methods=['GET', 'POST'])

@@ -1,50 +1,66 @@
-# Django Application Dockerfile
-# Обновлен под систему токенов и Telegram бота
+# =============================================================================
+# GHOSTWRITER - Django Application Dockerfile
+# =============================================================================
+# Production-ready контейнер для Django приложения
+# Поддерживает PostgreSQL, Redis, систему токенов
+# =============================================================================
 
 FROM python:3.11-slim
 
+# Метаданные
+LABEL maintainer="Ghostwriter Team"
+LABEL version="1.0"
+LABEL description="Ghostwriter AI Content Generator - Django Application"
+
 # Установка системных зависимостей
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    libpq-dev \
     gettext \
     postgresql-client \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Создание пользователя для безопасности
-RUN addgroup --system django && adduser --system --group django
+RUN groupadd --system django \
+    && useradd --system --gid django --create-home django
 
 # Установка рабочей директории
 WORKDIR /app
 
 # Копирование requirements и установка Python зависимостей
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Копирование проекта
-COPY . .
+COPY --chown=django:django . .
 
 # Создание необходимых директорий
-RUN mkdir -p /app/media /app/staticfiles /app/logs
+RUN mkdir -p /app/media /app/staticfiles /app/logs \
+    && chown -R django:django /app
 
-# Установка прав доступа
-RUN chown -R django:django /app
+# Копирование и настройка entrypoint
+COPY --chown=django:django docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Переключение на непривилегированного пользователя
 USER django
 
-# Сбор статических файлов
-RUN python manage.py collectstatic --noinput --settings=ghostwriter.settings
-
 # Переменные окружения
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV DJANGO_SETTINGS_MODULE=ghostwriter.settings
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    DJANGO_SETTINGS_MODULE=ghostwriter.production_settings
 
 # Открытие порта
 EXPOSE 8000
 
 # Проверка здоровья
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8000/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/ || exit 1
 
-# Команда запуска
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "ghostwriter.wsgi:application"]
+# Entrypoint и команда запуска
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "--max-requests", "1000", "--max-requests-jitter", "50", "ghostwriter.wsgi:application"]
