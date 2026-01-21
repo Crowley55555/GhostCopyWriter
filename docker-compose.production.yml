@@ -77,7 +77,7 @@ services:
       start_period: 60s
 
   # ===========================================================================
-  # Telegram Bot (polling mode)
+  # Telegram Bot (автоматическая выдача токенов)
   # ===========================================================================
   bot:
     build:
@@ -105,6 +105,31 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
+
+  # ===========================================================================
+  # Telegram Bot Public (бета-тестирование, перенаправление к разработчику)
+  # ===========================================================================
+  bot-public:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot-public
+    container_name: ghostwriter-bot-public-prod
+    environment:
+      - TELEGRAM_BOT_TOKEN_PUBLIC=${TELEGRAM_BOT_TOKEN_PUBLIC}
+      - OWNER_TELEGRAM=${OWNER_TELEGRAM:-@rain511}
+    volumes:
+      - logs_data:/app/logs
+    networks:
+      - ghostwriter-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
 
   # ===========================================================================
   # PostgreSQL Database
