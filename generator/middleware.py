@@ -22,7 +22,7 @@ class TokenAccessMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
         
-        # URL-паттерны, которые не требуют токена
+        # URL-паттерны, которые не требуют токена (префиксы)
         self.exempt_urls = [
             '/auth/token/',      # Вход по токену
             '/admin/',           # Админ-панель Django
@@ -32,12 +32,22 @@ class TokenAccessMiddleware:
             '/token-required/',  # Страница с требованием токена
             '/invalid-token/',   # Страница неверного токена
             '/limit-exceeded/',  # Страница превышения лимита
+            '/api/',             # API endpoints
+        ]
+        
+        # Точные URL без токена (публичные страницы)
+        self.exact_exempt_urls = [
+            '/',                 # Главная страница (landing)
         ]
     
     def __call__(self, request):
         """Обработка каждого запроса"""
         
-        # Пропускаем исключённые URLs
+        # Пропускаем точные совпадения (публичные страницы)
+        if request.path in self.exact_exempt_urls:
+            return self.get_response(request)
+        
+        # Пропускаем исключённые URLs по префиксу
         if self._is_exempt_url(request.path):
             return self.get_response(request)
         

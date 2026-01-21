@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- SEO Meta Tags -->
+    <title>Ghostwriter AI — Нейросеть для генерации SMM контента | Посты и изображения для соцсетей</title>
+    <meta name="description" content="Ghostwriter AI — бесплатный генератор контента на базе нейросетей GigaChat и GPT. Создавайте уникальные посты и изображения для ВКонтакте, Telegram, Instagram за секунды. Без регистрации, анонимно.">
+    <meta name="keywords" content="генератор контента, нейросеть для постов, AI генератор, SMM автоматизация, создание постов, GigaChat, GPT, DALL-E, генерация изображений, контент для соцсетей, ВКонтакте, Telegram, Instagram">
+    <meta name="author" content="Ghostwriter AI">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://ghostwriter.ai/">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://ghostwriter.ai/">
+    <meta property="og:title" content="Ghostwriter AI — Генератор SMM контента на нейросетях">
+    <meta property="og:description" content="Создавайте уникальные посты и изображения для соцсетей с помощью AI. Бесплатно, без регистрации, анонимно.">
+    <meta property="og:image" content="/static/og-image.jpg">
+    <meta property="og:locale" content="ru_RU">
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Ghostwriter AI — Генератор SMM контента">
+    <meta name="twitter:description" content="AI-генератор постов и изображений для соцсетей. Бесплатно и анонимно.">
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/static/styles.css">
+    
+    <style>
+        .hero-section {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            padding: 2rem 0;
+        }
+        
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: 
+                radial-gradient(ellipse at 20% 50%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 50%, rgba(138, 43, 226, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            animation: gradientPulse 8s ease-in-out infinite;
+        }
+        
+        @keyframes gradientPulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        .hero-title {
+            font-family: 'Orbitron', monospace;
+            font-size: clamp(2.5rem, 6vw, 4.5rem);
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d4ff 0%, #8a2be2 50%, #ff0080 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: titleGlow 3s ease-in-out infinite alternate;
+            margin-bottom: 1.5rem;
+        }
+        
+        @keyframes titleGlow {
+            0% { filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.3)); }
+            100% { filter: drop-shadow(0 0 30px rgba(138, 43, 226, 0.5)); }
+        }
+        
+        .hero-subtitle {
+            font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+            color: var(--text-secondary);
+            max-width: 700px;
+            margin: 0 auto 2rem;
+            line-height: 1.7;
+        }
+        
+        .cta-button {
+            padding: 1.2rem 3rem;
+            font-size: 1.25rem;
+            font-weight: 700;
+            border-radius: 50px;
+            background: linear-gradient(135deg, #00d4ff 0%, #8a2be2 100%);
+            border: none;
+            color: white;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 32px rgba(0, 212, 255, 0.3);
+            animation: ctaPulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes ctaPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 16px 48px rgba(0, 212, 255, 0.4);
+            color: white;
+        }
+        
+        .cta-button i { font-size: 1.5rem; }
+        
+        .features-section {
+            padding: 6rem 0;
+            background: var(--bg-secondary);
+        }
+        
+        .feature-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 2.5rem;
+            height: 100%;
+            border: 1px solid var(--border-color);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
+            transform: scaleX(0);
+            transition: transform 0.4s ease;
+        }
+        
+        .feature-card:hover::before { transform: scaleX(1); }
+        
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0, 212, 255, 0.2);
+            border-color: var(--neon-blue);
+        }
+        
+        .feature-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(138, 43, 226, 0.1));
+            color: var(--neon-blue);
+        }
+        
+        .feature-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+        
+        .feature-text {
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+        
+        .platforms-section { padding: 5rem 0; }
+        
+        .platform-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background: var(--card-bg);
+            border-radius: 50px;
+            border: 1px solid var(--border-color);
+            margin: 0.5rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .platform-badge:hover {
+            transform: scale(1.1);
+            border-color: var(--neon-blue);
+            box-shadow: 0 8px 24px rgba(0, 212, 255, 0.2);
+        }
+        
+        .stats-section {
+            padding: 5rem 0;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.05), rgba(138, 43, 226, 0.05));
+        }
+        
+        .stat-box { text-align: center; padding: 2rem; }
+        
+        .stat-number {
+            font-family: 'Orbitron', monospace;
+            font-size: 3.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-top: 0.5rem;
+        }
+        
+        .how-it-works { padding: 6rem 0; }
+        
+        .step-card {
+            position: relative;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .step-number {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+            color: white;
+            font-family: 'Orbitron', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 8px 24px rgba(0, 212, 255, 0.3);
+        }
+        
+        .step-connector {
+            position: absolute;
+            top: 50px;
+            right: -50%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
+            z-index: -1;
+        }
+        
+        .pricing-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: linear-gradient(135deg, #00ff88, #00d4ff);
+            color: #000;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        
+        .faq-item {
+            background: var(--card-bg);
+            border-radius: 15px;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+        
+        .faq-question {
+            padding: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .faq-answer {
+            padding: 0 1.5rem 1.5rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+        
+        .security-badges {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        
+        .security-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.25rem;
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 50px;
+            color: var(--neon-green);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        
+        html[data-theme="dark"] .hero-subtitle { color: #b0b0b0; }
+        html[data-theme="dark"] .feature-card { background: #1a1a2e; }
+        html[data-theme="dark"] .features-section { background: #0a0a0a; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="d-flex align-items-center justify-content-between py-2">
+                <div class="header-brand">
+                    <i class="bi bi-robot me-2" style="font-size: 2rem; color: var(--neon-blue);"></i>
+                    <span class="brand-text">Ghostwriter AI</span>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <button id="themeToggle" class="btn btn-theme-toggle" onclick="toggleTheme()">
+                        <i class="bi bi-sun-fill" id="themeIcon"></i>
+                        <span id="themeText">Киберпанк</span>
+                    </button>
+                    <a href="https://t.me/Ghostcopywriterregistration_bot" class="btn btn-primary" target="_blank">
+                        <i class="bi bi-telegram me-1"></i>Начать
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="hero-section">
+        <div class="container position-relative">
+            <div class="row justify-content-center text-center">
+                <div class="col-lg-10">
+                    <div class="pricing-badge">🎁 7 дней бесплатно</div>
+                    <h1 class="hero-title">Ghostwriter AI</h1>
+                    <p class="hero-subtitle">
+                        Нейросеть для создания <strong>уникальных постов</strong> и <strong>изображений</strong> 
+                        для социальных сетей. Генерируйте профессиональный SMM-контент 
+                        в один клик с помощью <strong>GigaChat</strong> и <strong>GPT-4</strong>.
+                    </p>
+                    <a href="https://t.me/Ghostcopywriterregistration_bot" class="cta-button" target="_blank">
+                        <i class="bi bi-telegram"></i>
+                        Начать генерацию контента
+                    </a>
+                    <div class="security-badges">
+                        <div class="security-badge"><i class="bi bi-shield-check"></i>Без регистрации</div>
+                        <div class="security-badge"><i class="bi bi-incognito"></i>Полная анонимность</div>
+                        <div class="security-badge"><i class="bi bi-check2-circle"></i>152-ФЗ</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="stats-section">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-3 col-6">
+                    <div class="stat-box">
+                        <div class="stat-number">50K+</div>
+                        <div class="stat-label">Постов создано</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="stat-box">
+                        <div class="stat-number">15K+</div>
+                        <div class="stat-label">Изображений</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="stat-box">
+                        <div class="stat-number">3K+</div>
+                        <div class="stat-label">Пользователей</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="stat-box">
+                        <div class="stat-number">24/7</div>
+                        <div class="stat-label">Доступность</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="features-section" id="features">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="display-5 fw-bold mb-3" style="color: var(--text-primary);">
+                    Возможности <span class="text-gradient">Ghostwriter AI</span>
+                </h2>
+                <p class="lead text-muted">Всё что нужно для создания качественного SMM-контента</p>
+            </div>
+            <div class="row g-4">
+                <div class="col-lg-4 col-md-6">
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="bi bi-file-earmark-text"></i></div>
+                        <h3 class="feature-title">Генерация текстов</h3>
+                        <p class="feature-text">Создавайте уникальные посты, статьи, описания товаров с помощью GigaChat и GPT-4.</p>
+                    </div>
+                </div>
+                <div class="col-lg-4 col-md-6">
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="bi bi-image"></i></div>
+                        <h3 class="feature-title">Генерация изображений</h3>
+                        <p class="feature-text">AI создает уникальные иллюстрации с помощью Kandinsky и DALL-E 3.</p>
+                    </div>
+                </div>
+                <div class="col-lg-4 col-md-6">
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="bi bi-palette"></i></div>
+                        <h3 class="feature-title">10+ шаблонов постов</h3>
+                        <p class="feature-text">Информационные, продающие, развлекательные форматы для любых задач.</p>
+                    </div>
+                </div>
+                <div class="col-lg-4 col-md-6">
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="bi bi-sliders"></i></div>
+                        <h3 class="feature-title">Настройка тона</h3>
+                        <p class="feature-text">Деловой, дружелюбный, юмористический стиль — под любую аудиторию.</p>
+                    </div>
+                </div>
+                <div class="col-lg-4 col-md-6">
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="bi bi-lightning-charge"></i></div>
+                        <h3 class="feature-title">Мгновенный результат</h3>
+                        <p class="feature-text">Готовый пост с изображением за 10-30 секунд.</p>
+                    </div>
+                </div>
+                <div class="col-lg-4 col-md-6">
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="bi bi-shield-lock"></i></div>
+                        <h3 class="feature-title">Безопасность данных</h3>
+                        <p class="feature-text">Соответствие 152-ФЗ. Анонимный доступ по токенам.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="platforms-section">
+        <div class="container text-center">
+            <h2 class="display-6 fw-bold mb-4" style="color: var(--text-primary);">Контент для всех платформ</h2>
+            <div class="d-flex flex-wrap justify-content-center">
+                <div class="platform-badge"><i class="bi bi-telegram" style="color: #0088cc;"></i>Telegram</div>
+                <div class="platform-badge"><i class="bi bi-circle-fill" style="color: #0077ff; font-size: 0.6rem;"></i>ВКонтакте</div>
+                <div class="platform-badge"><i class="bi bi-instagram" style="color: #e4405f;"></i>Instagram</div>
+                <div class="platform-badge"><i class="bi bi-twitter-x"></i>X (Twitter)</div>
+                <div class="platform-badge"><i class="bi bi-facebook" style="color: #1877f2;"></i>Facebook</div>
+                <div class="platform-badge"><i class="bi bi-tiktok"></i>TikTok</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="how-it-works" style="background: var(--bg-secondary);">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="display-5 fw-bold" style="color: var(--text-primary);">Как это работает?</h2>
+                <p class="lead text-muted">3 простых шага до готового контента</p>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="step-card">
+                        <div class="step-number">1</div>
+                        <h4 class="fw-bold mb-3" style="color: var(--text-primary);">Получите токен</h4>
+                        <p class="text-muted">Напишите боту и получите бесплатный доступ на 7 дней.</p>
+                        <div class="step-connector d-none d-md-block"></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="step-card">
+                        <div class="step-number">2</div>
+                        <h4 class="fw-bold mb-3" style="color: var(--text-primary);">Настройте параметры</h4>
+                        <p class="text-muted">Выберите платформу, тип поста и опишите тему.</p>
+                        <div class="step-connector d-none d-md-block"></div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="step-card">
+                        <div class="step-number">3</div>
+                        <h4 class="fw-bold mb-3" style="color: var(--text-primary);">Получите результат</h4>
+                        <p class="text-muted">Нейросеть сгенерирует текст и изображение.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="text-center mt-5">
+                <a href="https://t.me/Ghostcopywriterregistration_bot" class="cta-button" target="_blank">
+                    <i class="bi bi-telegram"></i>Попробовать бесплатно
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="py-5" id="faq">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="display-5 fw-bold" style="color: var(--text-primary);">Частые вопросы</h2>
+            </div>
+            <div class="row justify-content-center">
+                <div class="col-lg-8">
+                    <div class="faq-item">
+                        <div class="faq-question" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                            <span>Это действительно бесплатно?</span>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                        <div class="faq-answer">Да! Демо-доступ на 7 дней с безлимитными генерациями — полностью бесплатен.</div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                            <span>Нужна ли регистрация?</span>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                        <div class="faq-answer" style="display: none;">Нет! Доступ через анонимные токены. Мы не храним личные данные.</div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                            <span>Какие нейросети используются?</span>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                        <div class="faq-answer" style="display: none;">GigaChat и GPT-4 для текста, Kandinsky и DALL-E 3 для изображений.</div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                            <span>Контент уникальный?</span>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                        <div class="faq-answer" style="display: none;">Да, каждый текст и изображение генерируются индивидуально.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="py-5 text-center" style="background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(138, 43, 226, 0.1));">
+        <div class="container">
+            <h2 class="display-5 fw-bold mb-4" style="color: var(--text-primary);">Готовы создавать контент с AI?</h2>
+            <p class="lead text-muted mb-4">Присоединяйтесь к тысячам SMM-специалистов</p>
+            <a href="https://t.me/Ghostcopywriterregistration_bot" class="cta-button" target="_blank">
+                <i class="bi bi-telegram"></i>Начать бесплатно
+            </a>
+        </div>
+    </section>
+
+    <footer class="bg-dark text-light py-4">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-6 text-center text-md-start mb-3 mb-md-0">
+                    <div class="d-flex align-items-center justify-content-center justify-content-md-start gap-2">
+                        <i class="bi bi-robot" style="font-size: 1.5rem; color: var(--neon-blue);"></i>
+                        <span class="fw-bold">Ghostwriter AI</span>
+                    </div>
+                    <small class="text-muted">Генератор SMM контента на нейросетях</small>
+                </div>
+                <div class="col-md-6 text-center text-md-end">
+                    <a href="{% url 'token_required_page' %}" class="text-light text-decoration-none me-3">
+                        <small>Как это работает</small>
+                    </a>
+                    <a href="https://t.me/Ghostcopywriterregistration_bot" class="text-light text-decoration-none" target="_blank">
+                        <small><i class="bi bi-telegram me-1"></i>Telegram</small>
+                    </a>
+                </div>
+            </div>
+            <hr class="my-3" style="border-color: #333;">
+            <div class="text-center">
+                <small class="text-muted">© 2024-2026 Ghostwriter AI</small>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const body = document.body;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            const currentTheme = html.getAttribute('data-theme');
+            
+            if (currentTheme === 'dark') {
+                html.setAttribute('data-theme', 'light');
+                body.setAttribute('data-theme', 'light');
+                if (themeIcon) themeIcon.className = 'bi bi-sun-fill';
+                if (themeText) themeText.textContent = 'Киберпанк';
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.setAttribute('data-theme', 'dark');
+                body.setAttribute('data-theme', 'dark');
+                if (themeIcon) themeIcon.className = 'bi bi-moon-fill';
+                if (themeText) themeText.textContent = 'Светлая тема';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        function loadTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const html = document.documentElement;
+            const body = document.body;
+            const themeIcon = document.getElementById('themeIcon');
+            const themeText = document.getElementById('themeText');
+            
+            html.setAttribute('data-theme', savedTheme);
+            body.setAttribute('data-theme', savedTheme);
+            
+            if (savedTheme === 'dark') {
+                if (themeIcon) themeIcon.className = 'bi bi-moon-fill';
+                if (themeText) themeText.textContent = 'Светлая тема';
+            } else {
+                if (themeIcon) themeIcon.className = 'bi bi-sun-fill';
+                if (themeText) themeText.textContent = 'Киберпанк';
+            }
+        }
+
+        const observerOptions = { threshold: 0.1, rootMargin: '0px 0px -50px 0px' };
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.feature-card, .stat-box, .step-card, .faq-item').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(30px)';
+            el.style.transition = 'all 0.6s ease-out';
+            observer.observe(el);
+        });
+
+        window.addEventListener('DOMContentLoaded', loadTheme);
+    </script>
+</body>
+</html>
