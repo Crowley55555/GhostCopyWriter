@@ -36,7 +36,7 @@
                     <div class="d-flex align-items-center gap-2">
                         <button id="themeToggle" class="btn btn-theme-toggle" onclick="toggleTheme()">
                             <i class="bi bi-sun-fill" id="themeIcon"></i>
-                            <span id="themeText">Темная тема</span>
+                            <span id="themeText">Киберпанк</span>
                         </button>
                         {% block header_buttons %}
                           {% if user.is_authenticated %}
@@ -113,7 +113,7 @@
                 html.setAttribute('data-theme', 'light');
                 body.setAttribute('data-theme', 'light');
                 if (themeIcon) themeIcon.className = 'bi bi-sun-fill';
-                if (themeText) themeText.textContent = 'Темная тема';
+                if (themeText) themeText.textContent = 'Киберпанк';
                 localStorage.setItem('theme', 'light');
             } else {
                 html.setAttribute('data-theme', 'dark');
@@ -175,7 +175,7 @@
                 if (themeText) themeText.textContent = 'Светлая тема';
             } else {
                 if (themeIcon) themeIcon.className = 'bi bi-sun-fill';
-                if (themeText) themeText.textContent = 'Темная тема';
+                if (themeText) themeText.textContent = 'Киберпанк';
             }
             // Обновляем дату и время после загрузки темы
             updateDateTime();

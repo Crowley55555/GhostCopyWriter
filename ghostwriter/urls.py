@@ -21,7 +21,8 @@ from django.urls import path, include
 from generator import views
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', views.home_view, name='home'),
+    path('', views.landing_view, name='landing'),
+    path('home/', views.home_view, name='home'),
     path('generator/', views.generator_view, name='index'),
     path('regenerate-text/', views.regenerate_text, name='regenerate_text'),
     path('regenerate-image/', views.regenerate_image, name='regenerate_image'),

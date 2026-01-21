@@ -629,8 +629,19 @@ def logout_view(request):
     messages.success(request, 'Вы успешно вышли из системы.')
     return redirect('token_required_page')
 
+def landing_view(request):
+    """
+    Публичная главная страница (landing page)
+    Доступна всем без токена
+    """
+    return render(request, 'generator/landing.html')
+
+
 def home_view(request):
-    return render(request, 'generator/home.html')
+    """
+    Устаревшая страница home - редирект на landing
+    """
+    return redirect('landing')
 
 @token_required
 def profile_view(request):
