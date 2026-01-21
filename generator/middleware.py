@@ -98,6 +98,11 @@ class TokenAccessMiddleware:
         Returns:
             bool: True если URL исключён, False в противном случае
         """
+        # Проверяем точные совпадения (публичные страницы)
+        if path in self.exact_exempt_urls:
+            return True
+        
+        # Проверяем префиксы (админка, статика и т.д.)
         return any(path.startswith(url) for url in self.exempt_urls)
     
     def _clear_session(self, request):
