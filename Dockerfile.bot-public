@@ -1,39 +1,42 @@
 # ==============================================================================
 # GHOSTWRITER - Telegram Bot (Public Bot - Marketing & Onboarding)
 # ==============================================================================
-# Публичный бот для массового привлечения пользователей
+# Публичный бот для бета-тестирования и онбординга пользователей
 # Файл: bot_public.py
+# 
+# Функции:
+# - Показывает публичную оферту и политику конфиденциальности
+# - Перенаправляет пользователей к разработчику (@rain511) для получения DEMO
+# - Не выдаёт токены автоматически (бета-режим)
 # ==============================================================================
 
 FROM python:3.11-slim
 
 LABEL maintainer="Ghostwriter Team"
-LABEL version="3.0"
-LABEL description="Public Telegram Bot for marketing and user onboarding"
+LABEL version="3.1"
+LABEL description="Public Telegram Bot for beta-testing onboarding"
 
 # Установка системных зависимостей
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Создание пользователя для безопасности
-RUN addgroup --system bot && adduser --system --group bot
+RUN groupadd --system --gid 1001 bot && \
+    useradd --system --uid 1001 --gid bot --home /app --shell /bin/false bot
 
 # Установка рабочей директории
 WORKDIR /app
 
-# Копирование requirements
-COPY requirements.txt .
-
-# Установка зависимостей
+# Установка Python зависимостей (только необходимые для бота)
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
     python-telegram-bot==20.7 \
     python-dotenv>=1.0.0
 
-# Копирование только необходимых файлов для публичного бота
-COPY --chown=bot:bot bot_public.py .
-COPY --chown=bot:bot .env* ./
+# Копирование только бота (переменные окружения через docker-compose)
+COPY --chown=bot:bot bot_public.py ./
 
 # Создание директории для логов
 RUN mkdir -p /app/logs && chown -R bot:bot /app
@@ -43,10 +46,12 @@ USER bot
 
 # Переменные окружения
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    # Значения по умолчанию (переопределяются через docker-compose)
+    OWNER_TELEGRAM=@rain511
 
 # Проверка здоровья
-HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD pgrep -f "python.*bot_public.py" > /dev/null || exit 1
 
 # Команда запуска
