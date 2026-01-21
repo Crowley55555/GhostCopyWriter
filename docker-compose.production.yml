@@ -36,7 +36,7 @@ services:
       - GIGACHAT_CREDENTIALS=${GIGACHAT_CREDENTIALS}
       - GIGACHAT_SCOPE=${GIGACHAT_SCOPE:-GIGACHAT_API_PERS}
       # Flask микросервис (зарубежный сервер)
-      - FLASK_EXTERNAL_URL=${FLASK_EXTERNAL_URL}
+      - FLASK_GEN_URL=${FLASK_EXTERNAL_URL}
       # Шифрование
       - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
       # Django Security
