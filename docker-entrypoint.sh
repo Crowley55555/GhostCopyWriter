@@ -29,13 +29,13 @@ if [ -n "$REDIS_URL" ]; then
     echo "✅ Redis is ready!"
 fi
 
-# Применение миграций
+# Применение миграций (включая новые: токены GigaChat и клики подписки)
 echo "📦 Applying database migrations..."
 python manage.py migrate --noinput
 
-# Сбор статических файлов
+# Сбор статических файлов (включая subscription_tracking.js)
 echo "📁 Collecting static files..."
-python manage.py collectstatic --noinput
+python manage.py collectstatic --noinput --clear
 
 # Создание директории для логов
 mkdir -p /app/logs

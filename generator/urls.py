@@ -14,4 +14,7 @@ urlpatterns = [
     # API endpoints для создания токенов (используется ботом)
     path('api/tokens/create/', views.api_create_token, name='api_create_token'),
     path('api/tokens/<uuid:token>/', views.api_token_info, name='api_token_info'),
+    
+    # API endpoint для отслеживания кликов по кнопке подписки
+    path('api/track-subscription-click/', views.api_track_subscription_click, name='api_track_subscription_click'),
 ] 

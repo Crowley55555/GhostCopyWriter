@@ -8,7 +8,8 @@ FROM python:3.11-slim
 
 # Метаданные
 LABEL maintainer="Ghostwriter Team"
-LABEL description="Ghostwriter Telegram Bot"
+LABEL version="2.0"
+LABEL description="Ghostwriter Telegram Bot - Automatic Token Generation"
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \
