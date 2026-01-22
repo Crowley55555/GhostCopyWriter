@@ -3,14 +3,15 @@
 # =============================================================================
 # Production-ready контейнер для Django приложения
 # Поддерживает PostgreSQL, Redis, систему токенов
+# Включает мониторинг токенов GigaChat и кликов по кнопке подписки
 # =============================================================================
 
 FROM python:3.11-slim
 
 # Метаданные
 LABEL maintainer="Ghostwriter Team"
-LABEL version="1.0"
-LABEL description="Ghostwriter AI Content Generator - Django Application"
+LABEL version="2.0"
+LABEL description="Ghostwriter AI Content Generator - Django Application with Token & Click Tracking"
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \

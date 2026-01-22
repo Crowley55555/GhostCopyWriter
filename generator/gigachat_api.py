@@ -10,6 +10,13 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from gigachat import GigaChat as GigaChatDirect
 from gigachat.models import Chat, Messages, MessagesRole
 
+# Импорт для логирования токенов
+try:
+    from generator.models import GigaChatTokenUsage, Generation
+    TOKEN_TRACKING_ENABLED = True
+except ImportError:
+    TOKEN_TRACKING_ENABLED = False
+
 load_dotenv()
 
 # Новый способ: один Authorization Key (рекомендуется)
@@ -380,6 +387,74 @@ def assemble_prompt_from_criteria(data):
             prompt_parts.append(AUDIENCE_PROMPTS.get(v, ''))
     return '\n'.join([p for p in prompt_parts if p])
 
+def estimate_tokens(text):
+    """
+    Оценивает количество токенов в тексте
+    
+    Для русского языка: ~1 токен = 2-3 символа
+    Для английского: ~1 токен = 4 символа
+    Используем среднее значение: ~1 токен = 2.5 символа для смешанного текста
+    
+    Args:
+        text: Текст для оценки
+    
+    Returns:
+        int: Оценочное количество токенов
+    """
+    if not text:
+        return 0
+    # Оценка: 1 токен ≈ 2.5 символа для смешанного русско-английского текста
+    return int(len(str(text)) / 2.5)
+
+
+def log_token_usage(operation_type, prompt_text, response_text, generation_id=None, 
+                    user=None, token=None, topic=None, platform=None):
+    """
+    Логирует использование токенов GigaChat
+    
+    Args:
+        operation_type: Тип операции ('TEXT_GENERATION', 'IMAGE_PROMPT', 'IMAGE_GENERATION')
+        prompt_text: Текст промпта
+        response_text: Текст ответа от API
+        generation_id: ID генерации (опционально)
+        user: Пользователь Django (опционально)
+        token: TemporaryAccessToken (опционально)
+        topic: Тема генерации (опционально)
+        platform: Платформа (опционально)
+    """
+    if not TOKEN_TRACKING_ENABLED:
+        return
+    
+    try:
+        prompt_tokens = estimate_tokens(prompt_text)
+        completion_tokens = estimate_tokens(response_text)
+        total_tokens = prompt_tokens + completion_tokens
+        
+        generation = None
+        if generation_id:
+            try:
+                generation = Generation.objects.get(id=generation_id)
+            except Generation.DoesNotExist:
+                pass
+        
+        GigaChatTokenUsage.objects.create(
+            generation=generation,
+            user=user,
+            token=token,
+            operation_type=operation_type,
+            estimated_prompt_tokens=prompt_tokens,
+            estimated_completion_tokens=completion_tokens,
+            estimated_total_tokens=total_tokens,
+            prompt_length=len(str(prompt_text)),
+            response_length=len(str(response_text)),
+            topic=topic,
+            platform=platform
+        )
+    except Exception as e:
+        # Не прерываем выполнение при ошибке логирования
+        print(f"Ошибка при логировании токенов: {e}")
+
+
 def postprocess_final_result(text):
     """
     Оставляет только финальный пост (блок после 'Финальный Результат' или '**Текст поста:**'), 
@@ -438,23 +513,52 @@ def postprocess_final_result(text):
     result = re.sub(r'\n{3,}', '\n\n', '\n'.join(filtered))
     return result.strip()
 
-def generate_text(data):
+def generate_text(data, user=None, token=None, generation_id=None):
+    """
+    Генерирует текст через GigaChat API
+    
+    Args:
+        data: Параметры генерации
+        user: Пользователь Django (опционально, для логирования)
+        token: TemporaryAccessToken (опционально, для логирования)
+        generation_id: ID генерации (опционально, для логирования)
+    
+    Returns:
+        str: Сгенерированный текст
+    """
     try:
         print("Инициализация клиента GigaChat для генерации текста...")
         giga = _init_client()
         print("Клиент успешно инициализирован")
         system_prompt = assemble_prompt_from_criteria(data)
+        user_message = f"Напиши {data.get('template_type', '')} пост для {data.get('platform', '')}. Тема: {data.get('topic', '')}"
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=(
-                f"Напиши {data.get('template_type', '')} пост для {data.get('platform', '')}. Тема: {data.get('topic', '')}"
-            ))
+            HumanMessage(content=user_message)
         ]
+        
+        # Подготовка промпта для логирования
+        full_prompt = f"{system_prompt}\n\n{user_message}"
+        
         print("Отправка запроса на генерацию текста...")
         resp = giga.invoke(messages)
         print("Текст успешно сгенерирован")
+        
         # --- Постобработка: убираем подписи и промежуточные этапы ---
         clean_result = postprocess_final_result(resp.content)
+        
+        # Логирование использования токенов
+        log_token_usage(
+            operation_type='TEXT_GENERATION',
+            prompt_text=full_prompt,
+            response_text=resp.content,
+            generation_id=generation_id,
+            user=user,
+            token=token,
+            topic=data.get('topic'),
+            platform=data.get('platform')
+        )
+        
         return clean_result
     except Exception as e:
         print(f"Ошибка при генерации текста: {e}")
@@ -468,10 +572,20 @@ def generate_text(data):
         else:
             return f"WARNING: Ошибка при генерации текста: {str(e)[:100]}"
 
-def generate_image_prompt_from_text(text, form_data):
+def generate_image_prompt_from_text(text, form_data, user=None, token=None, generation_id=None):
     """
     Генерирует промпт для генератора изображения на основе сгенерированного текста поста и параметров формы.
     Возвращает строку-промпт для генерации иллюстрации.
+    
+    Args:
+        text: Сгенерированный текст поста
+        form_data: Параметры формы
+        user: Пользователь Django (опционально, для логирования)
+        token: TemporaryAccessToken (опционально, для логирования)
+        generation_id: ID генерации (опционально, для логирования)
+    
+    Returns:
+        str: Промпт для генерации изображения
     """
     try:
         giga = _init_client()
@@ -495,30 +609,59 @@ def generate_image_prompt_from_text(text, form_data):
             f"Стиль: {style}\n"
             f"Цель: {purpose}"
         )
+        full_prompt = f"{sys_prompt}\n\n{user_prompt}"
+        
         messages = [
             SystemMessage(content=sys_prompt),
             HumanMessage(content=user_prompt)
         ]
         resp = giga.invoke(messages)
-        return resp.content.strip()
+        result = resp.content.strip()
+        
+        # Логирование использования токенов
+        log_token_usage(
+            operation_type='IMAGE_PROMPT',
+            prompt_text=full_prompt,
+            response_text=resp.content,
+            generation_id=generation_id,
+            user=user,
+            token=token,
+            topic=form_data.get('topic'),
+            platform=platform
+        )
+        
+        return result
     except Exception as e:
         print(f"Ошибка при генерации промпта для изображения: {e}")
         return None
 
 # Модифицированная функция генерации изображения
 
-def generate_image_gigachat(image_prompt):
+def generate_image_gigachat(image_prompt, user=None, token=None, generation_id=None):
     """
     Генерация изображения через GigaChat API по готовому промпту.
+    
+    Args:
+        image_prompt: Промпт для генерации изображения
+        user: Пользователь Django (опционально, для логирования)
+        token: TemporaryAccessToken (опционально, для логирования)
+        generation_id: ID генерации (опционально, для логирования)
+    
+    Returns:
+        str: Base64 изображение или None
     """
     try:
         print("Инициализация клиента GigaChat для генерации изображения...")
         giga = _init_direct_client()
         print("Клиент для изображений успешно инициализирован")
         time.sleep(1)
+        
+        system_message = "Ты — талантливый художник, специализирующийся на создании иллюстраций для социальных сетей"
+        full_prompt = f"{system_message}\n\n{image_prompt}"
+        
         payload = Chat(
             messages=[
-                Messages(role=MessagesRole.SYSTEM, content="Ты — талантливый художник, специализирующийся на создании иллюстраций для социальных сетей"),
+                Messages(role=MessagesRole.SYSTEM, content=system_message),
                 Messages(role=MessagesRole.USER, content=image_prompt)
             ],
             function_call="auto",
@@ -530,11 +673,35 @@ def generate_image_gigachat(image_prompt):
         # Если ответ уже содержит готовое base64 изображение, возвращаем его напрямую
         if isinstance(response_content, str) and response_content.strip().startswith("data:image"):
             print("Получено готовое base64 изображение от GigaChat")
-            return response_content.strip()
+            result = response_content.strip()
+            
+            # Логирование использования токенов
+            log_token_usage(
+                operation_type='IMAGE_GENERATION',
+                prompt_text=full_prompt,
+                response_text=response_content[:500] if len(response_content) > 500 else response_content,  # Ограничиваем для логирования
+                generation_id=generation_id,
+                user=user,
+                token=token
+            )
+            
+            return result
         
         file_id = extract_image_id(response_content)
         if file_id:
             image_data = download_image(giga, file_id)
+            
+            # Логирование использования токенов
+            if image_data:
+                log_token_usage(
+                    operation_type='IMAGE_GENERATION',
+                    prompt_text=full_prompt,
+                    response_text=f"Image generated (size: {len(image_data)} chars)" if isinstance(image_data, str) else "Image generated",
+                    generation_id=generation_id,
+                    user=user,
+                    token=token
+                )
+            
             return image_data
         else:
             print("Не удалось извлечь ID изображения из ответа")

@@ -199,13 +199,28 @@ def generator_view(request):
                                 image_url = None
                 else:
                     # Старый генератор Gigachat
-                    result = generate_text(form_data)
+                    # Получаем данные для логирования токенов
+                    user = request.user if request.user.is_authenticated else None
+                    token = getattr(request, 'token', None)
+                    
+                    # Генерируем текст
+                    result = generate_text(form_data, user=user, token=token)
+                    
+                    # Создаем запись генерации для связи с токенами
+                    gen = Generation.objects.create(
+                        user=user,
+                        topic=form_data.get('topic', ''),
+                        result=result or "",
+                        image_url=""
+                    )
+                    generation_id = gen.id
+                    
                     from .gigachat_api import generate_image_prompt_from_text
-                    image_prompt = generate_image_prompt_from_text(result, form_data) if result else None
+                    image_prompt = generate_image_prompt_from_text(result, form_data, user=user, token=token, generation_id=generation_id) if result else None
                     if image_prompt:
-                        image_data = generate_image_gigachat(image_prompt)
+                        image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
                     else:
-                        image_data = generate_image_gigachat(form_data.get('topic', ''))
+                        image_data = generate_image_gigachat(form_data.get('topic', ''), user=user, token=token, generation_id=generation_id)
                     if image_data:
                         if image_data.startswith("data:image"):
                             import uuid
@@ -230,12 +245,19 @@ def generator_view(request):
                                 image_url = settings.MEDIA_URL + filename
                             except Exception as e:
                                 image_url = None
-                gen = Generation.objects.create(
-                    user=request.user if request.user.is_authenticated else None,
-                    topic=form_data.get('topic', ''),
-                    result=result,
-                    image_url=image_url or ""
-                )
+                # Обновляем запись генерации с изображением (если она уже создана)
+                if 'generation_id' not in locals():
+                    gen = Generation.objects.create(
+                        user=request.user if request.user.is_authenticated else None,
+                        topic=form_data.get('topic', ''),
+                        result=result,
+                        image_url=image_url or ""
+                    )
+                else:
+                    # Обновляем существующую запись
+                    gen.image_url = image_url or ""
+                    gen.save()
+                
                 # Сохраняем ID генерации в сессии для последующих перегенераций
                 request.session['current_generation_id'] = gen.id
                 if is_ajax:
@@ -410,10 +432,15 @@ def regenerate_image(request):
                     'error': 'Тема не предоставлена'
                 })
             
+            # Получаем данные для логирования токенов
+            user = request.user if request.user.is_authenticated else None
+            token = getattr(request, 'token', None)
+            generation_id = request.session.get('current_generation_id')
+            
             try:
                 from .gigachat_api import generate_image_prompt_from_text
                 # Создаём промпт на основе темы. В качестве "текста" передаём тему, а form_data пустой
-                image_prompt = generate_image_prompt_from_text(topic, {}) if callable(generate_image_prompt_from_text) else None
+                image_prompt = generate_image_prompt_from_text(topic, {}, user=user, token=token, generation_id=generation_id) if callable(generate_image_prompt_from_text) else None
             except Exception:
                 image_prompt = None
 
@@ -422,7 +449,7 @@ def regenerate_image(request):
                 image_prompt = f"Сделай яркую иллюстрацию для социальной сети на тему: '{topic}'. Стиль: цифровая живопись, яркие цвета."
 
             # Запускаем генерацию изображения
-            image_data = generate_image_gigachat(image_prompt)
+            image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
             
             if image_data:
                 print(f"Тип image_data: {type(image_data)}")
@@ -1251,4 +1278,64 @@ def api_token_info(request, token):
         return JsonResponse({
             'error': 'Internal server error',
             'message': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+@require_POST
+def api_track_subscription_click(request):
+    """
+    API endpoint для отслеживания кликов по кнопке "Купить доступ"
+    
+    POST /api/track-subscription-click/
+    
+    Body:
+        {
+            "page_url": "https://example.com/profile/",
+            "page_name": "profile"
+        }
+    
+    Returns:
+        JsonResponse: Статус успешного логирования
+    """
+    try:
+        from .models import SubscriptionButtonClick
+        
+        # Получаем данные из запроса
+        import json
+        data = json.loads(request.body) if request.body else {}
+        
+        page_url = data.get('page_url', request.META.get('HTTP_REFERER', ''))
+        page_name = data.get('page_name', '')
+        
+        # Получаем пользователя или токен
+        user = request.user if request.user.is_authenticated else None
+        token = getattr(request, 'token', None)
+        
+        # Получаем техническую информацию
+        ip_address = request.META.get('REMOTE_ADDR')
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        referer = request.META.get('HTTP_REFERER', '')
+        
+        # Создаем запись о клике
+        SubscriptionButtonClick.objects.create(
+            user=user,
+            token=token,
+            page_url=page_url,
+            page_name=page_name,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            referer=referer
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Click tracked successfully'
+        })
+    
+    except Exception as e:
+        print(f"Ошибка при логировании клика: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
         }, status=500)
