@@ -199,8 +199,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     Обработчик команды /start
     Показывает оферту перед началом работы
     """
-    user = update.effective_user
-    logger.info(f"Пользователь {user.id} запустил команду /start")
+    logger.info("Новый пользователь запустил /start")
     
     # Отправляем оферту по частям
     await update.message.reply_html(OFFER_PART_1)
@@ -234,10 +233,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
     
-    user = query.from_user
     action = query.data
     
-    logger.info(f"Пользователь {user.id} нажал кнопку: {action}")
+    logger.info(f"Нажата кнопка: {action}")
     
     if action == 'accept_offer':
         # Пользователь принял оферту
