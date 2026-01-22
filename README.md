@@ -983,8 +983,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 **Artem Lavrov**
 
-- GitHub: [@yourusername](https://github.com/yourusername)
-- Telegram: [@yourtelegram](https://t.me/yourtelegram)
+- GitHub: [@Crowley55555](https://github.com/yourusername)
+- Telegram: [@rain511](https://t.me/yourtelegram)
 
 ---
 
