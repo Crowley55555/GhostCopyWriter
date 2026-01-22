@@ -1,28 +1,32 @@
 # ==============================================================================
-# GHOSTWRITER - Telegram Bot (Public Bot - Marketing & Onboarding)
+# GHOSTWRITER - Telegram Bot (Public Bot - Privacy-Compliant)
 # ==============================================================================
-# Публичный бот для бета-тестирования и онбординга пользователей
+# Публичный бот для бета-тестирования — НЕ СОБИРАЕТ персональные данные!
 # Файл: bot_public.py
 # 
 # Функции:
 # - Показывает публичную оферту и политику конфиденциальности
-# - Перенаправляет пользователей к разработчику (@rain511) для получения DEMO
-# - Не выдаёт токены автоматически (бета-режим)
+# - Перенаправляет пользователей к разработчику для получения DEMO
+# - НЕ собирает и НЕ хранит Telegram ID пользователей
+# - НЕ выдаёт токены автоматически (бета-режим)
+#
+# Соответствует политике конфиденциальности проекта
 # ==============================================================================
 
 FROM python:3.11-slim
 
 LABEL maintainer="Ghostwriter Team"
-LABEL version="3.1"
-LABEL description="Public Telegram Bot for beta-testing onboarding"
+LABEL version="3.2"
+LABEL description="Privacy-compliant public Telegram Bot for beta-testing"
+LABEL privacy="No user data collection"
 
-# Установка системных зависимостей
+# Установка системных зависимостей (минимальный набор)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Создание пользователя для безопасности
+# Создание непривилегированного пользователя для безопасности
 RUN groupadd --system --gid 1001 bot && \
     useradd --system --uid 1001 --gid bot --home /app --shell /bin/false bot
 
@@ -35,24 +39,25 @@ RUN pip install --no-cache-dir --upgrade pip && \
     python-telegram-bot==20.7 \
     python-dotenv>=1.0.0
 
-# Копирование только бота (переменные окружения через docker-compose)
+# Копирование только скрипта бота
+# Переменные окружения передаются через docker-compose (не через .env файлы)
 COPY --chown=bot:bot bot_public.py ./
 
-# Создание директории для логов
-RUN mkdir -p /app/logs && chown -R bot:bot /app
+# Права на директорию (логи только в stdout, не в файлы)
+RUN chown -R bot:bot /app
 
-# Переключение на пользователя bot
+# Переключение на непривилегированного пользователя
 USER bot
 
 # Переменные окружения
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    # Значения по умолчанию (переопределяются через docker-compose)
+    # Telegram разработчика для бета-тестирования
     OWNER_TELEGRAM=@rain511
 
-# Проверка здоровья
+# Проверка здоровья (проверяем что процесс бота запущен)
 HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD pgrep -f "python.*bot_public.py" > /dev/null || exit 1
 
-# Команда запуска
+# Запуск бота (логи только в stdout благодаря -u)
 CMD ["python", "-u", "bot_public.py"]

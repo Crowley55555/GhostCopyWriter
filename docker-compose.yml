@@ -84,7 +84,8 @@ services:
     restart: unless-stopped
 
   # ===========================================================================
-  # Telegram Bot Public (бета-тестирование)
+  # Telegram Bot Public (бета-тестирование, privacy-compliant)
+  # НЕ собирает персональные данные, логи только в stdout
   # ===========================================================================
   bot-public:
     build:
@@ -94,8 +95,7 @@ services:
     environment:
       - TELEGRAM_BOT_TOKEN_PUBLIC=${TELEGRAM_BOT_TOKEN_PUBLIC}
       - OWNER_TELEGRAM=${OWNER_TELEGRAM:-@rain511}
-    volumes:
-      - ./logs:/app/logs
+    # Без volumes — бот не сохраняет данные на диск (privacy-compliant)
     networks:
       - ghostwriter-network
     restart: unless-stopped
