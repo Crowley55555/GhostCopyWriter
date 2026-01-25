@@ -10,8 +10,8 @@ FROM python:3.11-slim
 
 # Метаданные
 LABEL maintainer="Ghostwriter Team"
-LABEL version="2.0"
-LABEL description="Ghostwriter AI Content Generator - Django Application with Token & Click Tracking"
+LABEL version="2.2"
+LABEL description="Ghostwriter AI Content Generator - Django Application with Anti-Multiaccount Protection"
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \

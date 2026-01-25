@@ -281,12 +281,14 @@ def get_consent_text():
 
 <b>6. Подтверждаю:</b> вправе отозвать согласие в любое время.
 
-<b>7. Понимаю и принимаю:</b> что несу полную ответственность за сгенерированный контент в соответствии с Отказом от ответственности."""
+<b>7. Понимаю и принимаю:</b> что несу полную ответственность за сгенерированный контент в соответствии с Отказом от ответственности.
+
+<b>❗ Акцепт:</b> нажатием кнопки "Принять все документы" в Telegram-боте."""
 
 
 def get_disclaimer_text():
     """Возвращает текст отказа от ответственности"""
-    return """⚠️ <b>ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ</b>
+    text = """⚠️ <b>ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ</b>
 
 Отказ от ответственности GhostCopywriter дополняет Публичную оферту и Политику конфиденциальности. Пользователь самостоятельно несет все риски, связанные с использованием сгенерированного контента.
 
@@ -333,6 +335,7 @@ def get_disclaimer_text():
 • Тестировать контент на небольшой аудитории.
 
 <b>Дата:</b> 25 января 2026 г."""
+    return text
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -343,29 +346,19 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """
     user = update.effective_user
     
-    if not update.message:
-        logger.error("update.message is None in start_command")
-        return
-    
     # Проверяем, принял ли пользователь оферту
     if not has_accepted_terms(user.id):
         # Показываем оферту при первом запуске
-        logger.info(f"Пользователь {user.id} еще не принял документы, показываю оферту")
         await show_offer(update, context)
         return
     
     # Показываем меню с тарифами
-    logger.info(f"Пользователь {user.id} уже принял документы, показываю меню")
     await show_tariff_menu(update, context)
 
 
 async def show_offer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показывает все документы: оферту, политику конфиденциальности, отказ от ответственности и согласие"""
     user = update.effective_user
-    
-    if not update.message:
-        logger.error("update.message is None in show_offer")
-        return
     
     # Отправляем приветственное сообщение с предупреждением
     welcome_text = (
@@ -413,15 +406,6 @@ async def show_offer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def show_tariff_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показывает меню с тарифами"""
-    # Определяем, откуда пришел запрос (message или callback_query)
-    message = update.message
-    if not message and update.callback_query:
-        message = update.callback_query.message
-    
-    if not message:
-        logger.error("Не удалось получить message из update в show_tariff_menu")
-        return
-    
     # Создаем inline клавиатуру с кнопками
     keyboard = [
         [InlineKeyboardButton("🆓 Бесплатный старт", callback_data='demo_free')],
@@ -447,7 +431,7 @@ async def show_tariff_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"🔒 <i>Мы не собираем персональные данные. Полная анонимность.</i>"
     )
     
-    await message.reply_html(
+    await update.message.reply_html(
         welcome_text,
         reply_markup=reply_markup
     )
@@ -455,8 +439,6 @@ async def show_tariff_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def process_demo_token(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает создание бесплатного токена (редактирует существующее сообщение)"""
-    user = query.from_user
-    
     # Показываем промежуточное сообщение
     await query.edit_message_text(
         text="⏳ <b>Генерирую токен...</b>\n\n"
@@ -464,42 +446,10 @@ async def process_demo_token(query, context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode='HTML'
     )
     
-    # Создаем токен через Django API с передачей user_id
-    token_data = create_token_via_api('DEMO_FREE', telegram_user_id=user.id)
+    # Создаем токен через Django API
+    token_data = create_token_via_api('DEMO_FREE')
     
     if token_data:
-        # Проверяем, не вернулась ли ошибка о существующем токене
-        if 'error' in token_data:
-            if token_data.get('error') == 'Demo token already exists':
-                existing_url = token_data.get('existing_token_url', '')
-                existing_text = (
-                    "⚠️ <b>У вас уже есть активный бесплатный токен!</b>\n\n"
-                    "Один пользователь может иметь только один бесплатный токен.\n\n"
-                    f"🔗 <b>Ваша существующая ссылка:</b>\n{existing_url}\n\n"
-                    "💡 <i>Используйте эту ссылку для доступа к сервису.</i>"
-                )
-                await query.edit_message_text(
-                    text=existing_text,
-                    parse_mode='HTML'
-                )
-                return
-            elif token_data.get('error') == 'Active subscription exists':
-                existing_url = token_data.get('existing_token_url', '')
-                sub_type = token_data.get('subscription_type', '')
-                next_renewal = token_data.get('next_renewal', '')
-                existing_text = (
-                    f"⚠️ <b>У вас уже есть активная подписка!</b>\n\n"
-                    f"Тариф: <b>{sub_type}</b>\n"
-                    f"Следующее пополнение: {next_renewal}\n\n"
-                    f"🔗 <b>Ваша ссылка:</b>\n{existing_url}\n\n"
-                    "💡 <i>Дождитесь окончания текущей подписки или отмените её.</i>"
-                )
-                await query.edit_message_text(
-                    text=existing_text,
-                    parse_mode='HTML'
-                )
-                return
-        
         # Успешно создали токен
         token = token_data.get('token')
         expires_at = token_data.get('expires_at')
@@ -507,19 +457,16 @@ async def process_demo_token(query, context: ContextTypes.DEFAULT_TYPE) -> None:
         
         # Парсим дату истечения
         try:
-            if expires_at:
-                expires_dt = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
-                expires_str = expires_dt.strftime('%d.%m.%Y %H:%M')
-            else:
-                expires_str = "бессрочно"
+            expires_dt = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+            expires_str = expires_dt.strftime('%d.%m.%Y %H:%M')
         except:
-            expires_str = expires_at if expires_at else "бессрочно"
+            expires_str = expires_at
         
         demo_text = (
             "✅ <b>DEMO токен готов!</b>\n\n"
             "📝 <b>Условия:</b>\n"
-            "• Срок действия: бессрочно\n"
-            "• 30 000 токенов GigaChat + 30 000 OpenAI\n\n"
+            "• Срок действия: 14 дней\n"
+            "• Генераций: безлимит\n\n"
             "🔗 <b>Ваша ссылка:</b>\n"
             f"{token_url}\n\n"
             f"📅 <b>Активна до:</b> {expires_str}\n\n"
@@ -906,29 +853,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             metadata = payment_info.get('metadata', {})
             tariff_type = metadata.get('tariff', context.user_data.get('tariff_type', 'BASIC'))
             
-            # Передаем telegram_user_id для защиты от мультиаккаунтов
-            token_data = create_token_via_api(tariff_type, telegram_user_id=user.id)
+            token_data = create_token_via_api(tariff_type)
             
             if token_data:
-                # Проверяем, не вернулась ли ошибка о существующей подписке
-                if 'error' in token_data:
-                    if token_data.get('error') == 'Active subscription exists':
-                        existing_url = token_data.get('existing_token_url', '')
-                        sub_type = token_data.get('subscription_type', '')
-                        next_renewal = token_data.get('next_renewal', '')
-                        existing_text = (
-                            f"⚠️ <b>У вас уже есть активная подписка!</b>\n\n"
-                            f"Тариф: <b>{sub_type}</b>\n"
-                            f"Следующее пополнение: {next_renewal}\n\n"
-                            f"🔗 <b>Ваша ссылка:</b>\n{existing_url}\n\n"
-                            "💡 <i>Дождитесь окончания текущей подписки или отмените её.</i>"
-                        )
-                        await query.edit_message_text(
-                            text=existing_text,
-                            parse_mode='HTML'
-                        )
-                        return
-                
                 token_url = token_data.get('url')
                 expires_at = token_data.get('expires_at')
                 
@@ -940,11 +867,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 tariff_name, tariff_price = tariff_names.get(tariff_type, (tariff_type, 0))
                 
                 try:
-                    if expires_at:
-                        expires_dt = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
-                        expires_str = expires_dt.strftime('%d.%m.%Y %H:%M')
-                    else:
-                        expires_str = "бессрочно"
+                    expires_dt = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                    expires_str = expires_dt.strftime('%d.%m.%Y %H:%M')
                 except:
                     expires_str = expires_at if expires_at else "бессрочно"
                 

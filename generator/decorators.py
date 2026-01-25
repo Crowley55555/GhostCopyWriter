@@ -54,27 +54,32 @@ def consume_generation(view_func):
                 request.session.flush()
                 return redirect('invalid_token_page')
             
-            # Проверяем лимиты для DEMO токенов
-            if token.token_type == 'DEMO':
-                # Сбрасываем счетчик если новый день
-                token.reset_daily_limit()
-                
-                # Проверяем наличие доступных генераций
-                if token.daily_generations_left <= 0:
-                    return redirect('limit_exceeded_page')
+            # Проверяем лимиты токенов GigaChat и OpenAI
+            can_gc, gc_reason = token.can_use_gigachat()
+            can_oa, oa_reason = token.can_use_openai()
             
-            # Проверяем общую возможность генерации
-            if not token.can_generate():
+            # Если оба лимита исчерпаны - перенаправляем на страницу лимита
+            if not can_gc and not can_oa:
                 return redirect('limit_exceeded_page')
+            
+            # Если только OpenAI исчерпан, но GigaChat доступен - показываем специальную страницу
+            if not can_oa and can_gc:
+                return redirect('openai_limit_exceeded_page')
+            
+            # Сохраняем токен в request для использования в views
+            request.token = token
             
             # Получаем IP адрес пользователя
             ip_address = get_client_ip(request)
             
-            # Уменьшаем счетчик и обновляем статистику
+            # Обновляем статистику использования (legacy)
             token.consume_generation(ip_address=ip_address)
             
             # Обновляем данные в сессии
-            request.session['daily_generations_left'] = token.daily_generations_left
+            request.session['gigachat_tokens_limit'] = token.gigachat_tokens_limit
+            request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+            request.session['openai_tokens_limit'] = token.openai_tokens_limit
+            request.session['openai_tokens_used'] = token.openai_tokens_used
             request.session['total_used'] = token.total_used
             
         except TemporaryAccessToken.DoesNotExist:

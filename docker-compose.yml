@@ -1,6 +1,8 @@
 # =============================================================================
 # GHOSTWRITER - Docker Compose для локальной разработки
 # =============================================================================
+# Версия 2.2 - Защита от мультиаккаунтов, обновленные тарифы и отказ от ответственности
+# 
 # Запуск: docker-compose up -d
 # Логи: docker-compose logs -f
 # Остановка: docker-compose down
@@ -72,30 +74,26 @@ services:
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL:-}
+      - BOT_USERNAME=${BOT_USERNAME:-ghostwriter_bot}
       - DJANGO_API_URL=http://django:8000
+      - DJANGO_API_KEY=${DJANGO_API_KEY:-}
       - SITE_URL=${SITE_URL:-http://localhost:8000}
+      # Реквизиты исполнителя (для оферты)
+      - EXECUTOR_FULL_NAME=${EXECUTOR_FULL_NAME:-ФИО полностью}
+      - EXECUTOR_INN=${EXECUTOR_INN:-}
+      - EXECUTOR_PHONE=${EXECUTOR_PHONE:-}
+      - EXECUTOR_EMAIL=${EXECUTOR_EMAIL:-}
+      - EXECUTOR_TELEGRAM=${EXECUTOR_TELEGRAM:-@username}
+      - EXECUTOR_CITY=${EXECUTOR_CITY:-Москва, Россия}
+      # Платежные системы
+      - YOOKASSA_SHOP_ID=${YOOKASSA_SHOP_ID:-}
+      - YOOKASSA_SECRET_KEY=${YOOKASSA_SECRET_KEY:-}
     volumes:
       - ./logs:/app/logs
     depends_on:
       django:
         condition: service_healthy
-    networks:
-      - ghostwriter-network
-    restart: unless-stopped
-
-  # ===========================================================================
-  # Telegram Bot Public (бета-тестирование, privacy-compliant)
-  # НЕ собирает персональные данные, логи только в stdout
-  # ===========================================================================
-  bot-public:
-    build:
-      context: .
-      dockerfile: Dockerfile.bot-public
-    container_name: ghostwriter-bot-public
-    environment:
-      - TELEGRAM_BOT_TOKEN_PUBLIC=${TELEGRAM_BOT_TOKEN_PUBLIC}
-      - OWNER_TELEGRAM=${OWNER_TELEGRAM:-@rain511}
-    # Без volumes — бот не сохраняет данные на диск (privacy-compliant)
     networks:
       - ghostwriter-network
     restart: unless-stopped

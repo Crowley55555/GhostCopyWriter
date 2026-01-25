@@ -16,7 +16,7 @@ from datetime import datetime
 # =============================================================================
 # PROJECT IMPORTS
 # =============================================================================
-from .forms import GenerationForm, RegisterForm, LoginForm, UserProfileForm, UserEditForm
+from .forms import GenerationForm, LoginForm
 from .models import Generation, UserProfile, GenerationTemplate
 from .gigachat_api import generate_text, generate_image_gigachat
 from .yandex_image_api import generate_image as generate_image_yandex
@@ -82,46 +82,28 @@ def quick_login(request, username):
                         user = User.objects.create_superuser(
                             username='admin',
                             email='admin@example.com',
-                            password='admin123',
-                            first_name='Администратор',
-                            last_name='Системы'
+                            password='admin123'
                         )
                     elif username == 'test_user_1':
                         user = User.objects.create_user(
                             username='test_user_1',
                             email='test1@example.com',
-                            password='test123',
-                            first_name='Анна',
-                            last_name='Петрова'
+                            password='test123'
                         )
                         # Создаем профиль пользователя
-                        UserProfile.objects.get_or_create(
-                            user=user,
-                            defaults={
-                                'city': 'Москва',
-                                'bio': 'Тестовый пользователь для разработки. Специалист по контент-маркетингу.'
-                            }
-                        )
+                        UserProfile.objects.get_or_create(user=user)
                     elif username == 'test_user_2':
                         user = User.objects.create_user(
                             username='test_user_2',
                             email='test2@example.com',
-                            password='test123',
-                            first_name='Михаил',
-                            last_name='Сидоров'
+                            password='test123'
                         )
                         # Создаем профиль пользователя
-                        UserProfile.objects.get_or_create(
-                            user=user,
-                            defaults={
-                                'city': 'Санкт-Петербург',
-                                'bio': 'Второй тестовый пользователь для разработки. SMM-менеджер.'
-                            }
-                        )
+                        UserProfile.objects.get_or_create(user=user)
                 
                 # Выполняем вход
                 login(request, user)
-                messages.success(request, f'Добро пожаловать, {user.first_name or user.username}!')
+                messages.success(request, f'Добро пожаловать, {user.username}!')
                 
                 # Редирект в зависимости от типа пользователя
                 if username == 'admin':
@@ -164,6 +146,7 @@ def generator_view(request):
     limit_reached = False
     form = GenerationForm(request.POST or None)
     generator_type = request.POST.get('generator_type', 'gigachat')  # Новый параметр
+    generate_image_flag = request.POST.get('generate_image', 'off') == 'on'  # Чекбокс генерации изображения
     if request.method == 'POST':
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         if form.is_valid():
@@ -182,11 +165,19 @@ def generator_view(request):
                             image_url = None
                     else:
                         try:
+                            # Получаем токен для учёта OpenAI токенов
+                            token = getattr(request, 'token', None)
+                            
                             # Генератор через Flask API
-                            gen_result = generate_text_and_prompt(form_data)
+                            gen_result = generate_text_and_prompt(form_data, token=token)
                             result = gen_result.get('text')
                             image_prompt = gen_result.get('image_prompt')
-                            image_url = generate_image(image_prompt) if image_prompt else None
+                            image_url = generate_image(image_prompt, token=token) if image_prompt else None
+                            
+                            # Обновляем информацию о токенах в сессии после использования
+                            if token and is_ajax:
+                                request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                                request.session['openai_tokens_used'] = token.openai_tokens_used
                         except Exception as e:
                             print(f"Ошибка Flask API: {e}")
                             if is_ajax:
@@ -215,12 +206,22 @@ def generator_view(request):
                     )
                     generation_id = gen.id
                     
-                    from .gigachat_api import generate_image_prompt_from_text
-                    image_prompt = generate_image_prompt_from_text(result, form_data, user=user, token=token, generation_id=generation_id) if result else None
-                    if image_prompt:
-                        image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
-                    else:
-                        image_data = generate_image_gigachat(form_data.get('topic', ''), user=user, token=token, generation_id=generation_id)
+                    # Генерируем изображение только если чекбокс выбран
+                    image_data = None
+                    image_url = None
+                    if generate_image_flag and result:
+                        from .gigachat_api import generate_image_prompt_from_text
+                        image_prompt = generate_image_prompt_from_text(result, form_data, user=user, token=token, generation_id=generation_id) if result else None
+                        if image_prompt:
+                            image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
+                        else:
+                            image_data = generate_image_gigachat(form_data.get('topic', ''), user=user, token=token, generation_id=generation_id)
+                    
+                    # Обновляем информацию о токенах в сессии после использования GigaChat
+                    if token and is_ajax:
+                        request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                        request.session['openai_tokens_used'] = token.openai_tokens_used
+                    
                     if image_data:
                         if image_data.startswith("data:image"):
                             import uuid
@@ -260,13 +261,25 @@ def generator_view(request):
                 
                 # Сохраняем ID генерации в сессии для последующих перегенераций
                 request.session['current_generation_id'] = gen.id
+                # Сохраняем form_data для последующей генерации изображения
+                request.session['last_form_data'] = form_data
                 if is_ajax:
+                    # Обновляем информацию о токенах из сессии перед отправкой ответа
+                    token = getattr(request, 'token', None)
+                    if token:
+                        # Обновляем данные в сессии из актуального токена
+                        request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                        request.session['openai_tokens_used'] = token.openai_tokens_used
+                    
                     return JsonResponse({
                         'success': True,
                         'result': result,
                         'image_url': image_url,
                         'limit_reached': limit_reached,
-                        'generation_id': gen.id
+                        'generation_id': gen.id,
+                        'generate_image_flag': generate_image_flag,
+                        'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                        'openai_tokens_used': request.session.get('openai_tokens_used', 0)
                     })
             except Exception as e:
                 print(f"Ошибка генерации: {e}")
@@ -276,15 +289,27 @@ def generator_view(request):
             if is_ajax:
                 errors = {field: [str(err) for err in errs] for field, errs in form.errors.items()}
                 return JsonResponse({'success': False, 'error': 'Некорректно заполнена форма', 'form_errors': errors})
-    # Проверяем, является ли токен DEMO
+    # Получаем информацию о токене для отображения лимитов
+    token = getattr(request, 'token', None)
     is_demo = request.session.get('is_demo', False)
+    token_type = request.session.get('token_type', 'DEMO_FREE')
+    gigachat_tokens_limit = request.session.get('gigachat_tokens_limit', -1)
+    gigachat_tokens_used = request.session.get('gigachat_tokens_used', 0)
+    openai_tokens_limit = request.session.get('openai_tokens_limit', 0)
+    openai_tokens_used = request.session.get('openai_tokens_used', 0)
     
     return render(request, 'generator/gigagenerator.html', {
         'form': form, 
         'result': result, 
         'image_url': image_url, 
         'limit_reached': limit_reached,
-        'is_demo': is_demo
+        'is_demo': is_demo,
+        'token': token,
+        'token_type': token_type,
+        'gigachat_tokens_limit': gigachat_tokens_limit,
+        'gigachat_tokens_used': gigachat_tokens_used,
+        'openai_tokens_limit': openai_tokens_limit,
+        'openai_tokens_used': openai_tokens_used
     })
 
 # =============================================================================
@@ -315,13 +340,22 @@ def regenerate_text(request):
                     'success': False,
                     'error': 'Не все необходимые данные предоставлены'
                 })
+            # Получаем токен для учёта токенов
+            user = request.user if request.user.is_authenticated else None
+            token = getattr(request, 'token', None)
+            
             # Создаем словарь с данными для генерации
             form_data = {
                 'topic': topic
                 # Добавить новые критерии, если нужно
             }
             # Генерируем новый текст
-            result = generate_text(form_data)
+            result = generate_text(form_data, user=user, token=token)
+            
+            # Обновляем информацию о токенах в сессии
+            if token:
+                request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                request.session['openai_tokens_used'] = token.openai_tokens_used
             
             # Обновляем существующую запись или создаем новую
             generation_id = request.session.get('current_generation_id')
@@ -334,7 +368,7 @@ def regenerate_text(request):
                 except Generation.DoesNotExist:
                     # Если запись не найдена, создаем новую
                     gen = Generation.objects.create(
-                        user=request.user if request.user.is_authenticated else None,
+                        user=user,
                         topic=topic,
                         result=result,
                         image_url=""
@@ -343,7 +377,7 @@ def regenerate_text(request):
             else:
                 # Создаем новую запись, если нет ID в сессии
                 gen = Generation.objects.create(
-                    user=request.user if request.user.is_authenticated else None,
+                    user=user,
                     topic=topic,
                     result=result,
                     image_url=""
@@ -352,7 +386,9 @@ def regenerate_text(request):
             return JsonResponse({
                 'success': True,
                 'result': result,
-                'message': 'Текст успешно перегенерирован'
+                'message': 'Текст успешно перегенерирован',
+                'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                'openai_tokens_used': request.session.get('openai_tokens_used', 0)
             })
         except Exception as e:
             print(f"Ошибка при перегенерации текста: {e}")
@@ -407,6 +443,132 @@ def update_generation_image(request, topic, image_url):
             image_url=image_url
         )
         request.session['current_generation_id'] = gen.id
+
+@csrf_exempt
+@token_required
+def generate_image_from_text(request):
+    """
+    Генерация изображения на основе уже сгенерированного текста
+    
+    Генерирует промпт для изображения на основе текста и создает изображение.
+    Используется когда пользователь не выбрал генерацию изображения сразу.
+    
+    Args:
+        request: AJAX POST запрос с topic и result_text
+    
+    Returns:
+        JsonResponse: URL изображения или ошибка
+    """
+    if request.method == 'POST':
+        try:
+            topic = request.POST.get('topic')
+            result_text = request.POST.get('result_text')
+            
+            if not result_text:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Текст не предоставлен'
+                })
+            
+            # Получаем данные для логирования токенов
+            user = request.user if request.user.is_authenticated else None
+            token = getattr(request, 'token', None)
+            generation_id = request.session.get('current_generation_id')
+            
+            # Получаем form_data из сессии или создаем минимальный набор
+            form_data = request.session.get('last_form_data', {})
+            if not form_data:
+                form_data = {'topic': topic} if topic else {}
+            
+            try:
+                from .gigachat_api import generate_image_prompt_from_text
+                # Генерируем промпт на основе сгенерированного текста
+                image_prompt = generate_image_prompt_from_text(result_text, form_data, user=user, token=token, generation_id=generation_id)
+            except Exception as e:
+                print(f"Ошибка при генерации промпта: {e}")
+                image_prompt = None
+            
+            # Если не удалось сгенерировать промпт, используем простое описание
+            if not image_prompt:
+                image_prompt = f"Сделай яркую иллюстрацию для социальной сети на тему: '{topic or result_text[:100]}'. Стиль: цифровая живопись, яркие цвета."
+            
+            # Запускаем генерацию изображения
+            from .gigachat_api import generate_image_gigachat
+            image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
+            
+            if image_data:
+                if image_data.startswith("data:image"):
+                    # Это base64 данные от GigaChat - сохраняем локально
+                    try:
+                        import uuid
+                        filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
+                        full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                        
+                        base64_data = image_data.split(',')[1]
+                        image_bytes = base64.b64decode(base64_data)
+                        
+                        with open(full_path, "wb") as f:
+                            f.write(image_bytes)
+                        
+                        image_url = settings.MEDIA_URL + filename
+                        
+                        # Обновляем изображение в существующей записи
+                        update_generation_image(request, topic or result_text[:50], image_url)
+                        
+                        # Обновляем информацию о токенах в сессии
+                        if token:
+                            request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                            request.session['openai_tokens_used'] = token.openai_tokens_used
+                        
+                        return JsonResponse({
+                            'success': True,
+                            'image_url': image_url,
+                            'message': 'Изображение успешно сгенерировано',
+                            'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                            'openai_tokens_used': request.session.get('openai_tokens_used', 0)
+                        })
+                    except Exception as e:
+                        print(f"Ошибка при сохранении base64 изображения: {e}")
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'Ошибка при сохранении изображения: {str(e)}'
+                        })
+                elif image_data.startswith("http"):
+                    # Это URL
+                    update_generation_image(request, topic or result_text[:50], image_data)
+                    
+                    if token:
+                        request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                        request.session['openai_tokens_used'] = token.openai_tokens_used
+                    
+                    return JsonResponse({
+                        'success': True,
+                        'image_url': image_data,
+                        'message': 'Изображение успешно сгенерировано',
+                        'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                        'openai_tokens_used': request.session.get('openai_tokens_used', 0)
+                    })
+                else:
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Неизвестный формат данных изображения'
+                    })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Не удалось сгенерировать изображение'
+                })
+        except Exception as e:
+            print(f"Ошибка при генерации изображения из текста: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+    return JsonResponse({
+        'success': False,
+        'error': 'Метод не поддерживается'
+    })
 
 @csrf_exempt
 def regenerate_image(request):
@@ -479,10 +641,17 @@ def regenerate_image(request):
                         # Обновляем изображение в существующей записи
                         update_generation_image(request, topic, image_url)
                         
+                        # Обновляем информацию о токенах в сессии
+                        if token:
+                            request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                            request.session['openai_tokens_used'] = token.openai_tokens_used
+                        
                         return JsonResponse({
                             'success': True,
                             'image_url': image_url,
-                            'message': 'Изображение успешно перегенерировано'
+                            'message': 'Изображение успешно перегенерировано',
+                            'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                            'openai_tokens_used': request.session.get('openai_tokens_used', 0)
                         })
                         
                     except Exception as e:
@@ -491,20 +660,34 @@ def regenerate_image(request):
                         # Обновляем изображение в существующей записи
                         update_generation_image(request, topic, image_data)
                         
+                        # Обновляем информацию о токенах в сессии
+                        if token:
+                            request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                            request.session['openai_tokens_used'] = token.openai_tokens_used
+                        
                         return JsonResponse({
                             'success': True,
                             'image_url': image_data,
-                            'message': 'Изображение перегенерировано (base64)'
+                            'message': 'Изображение перегенерировано (base64)',
+                            'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                            'openai_tokens_used': request.session.get('openai_tokens_used', 0)
                         })
                 elif image_data.startswith("http"):
                     # Это URL (если вдруг вернется)
                     # Обновляем изображение в существующей записи
                     update_generation_image(request, topic, image_data)
                     
+                    # Обновляем информацию о токенах в сессии
+                    if token:
+                        request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                        request.session['openai_tokens_used'] = token.openai_tokens_used
+                    
                     return JsonResponse({
                         'success': True,
                         'image_url': image_data,
-                        'message': 'Изображение перегенерировано (URL)'
+                        'message': 'Изображение перегенерировано (URL)',
+                        'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                        'openai_tokens_used': request.session.get('openai_tokens_used', 0)
                     })
                 else:
                     # Сохраняем локально, если это base64 без префикса
@@ -523,10 +706,17 @@ def regenerate_image(request):
                         # Обновляем изображение в существующей записи
                         update_generation_image(request, topic, image_url)
                         
+                        # Обновляем информацию о токенах в сессии
+                        if token:
+                            request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                            request.session['openai_tokens_used'] = token.openai_tokens_used
+                        
                         return JsonResponse({
                             'success': True,
                             'image_url': image_url,
-                            'message': 'Изображение успешно перегенерировано'
+                            'message': 'Изображение успешно перегенерировано',
+                            'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                            'openai_tokens_used': request.session.get('openai_tokens_used', 0)
                         })
                     except Exception as e:
                         print(f"Ошибка при сохранении изображения: {e}")
@@ -601,11 +791,6 @@ def agreement_view(request):
             )
             user_profile = UserProfile.objects.create(
                 user=user,
-                first_name=reg_data.get('first_name', ''),
-                last_name=reg_data.get('last_name', ''),
-                city=reg_data.get('city', ''),
-                phone=reg_data.get('phone', ''),
-                date_of_birth=dob_obj,
                 terms_accepted=True,
             )
             login(request, user)
@@ -673,11 +858,16 @@ def home_view(request):
 @token_required
 def profile_view(request):
     # Получаем информацию о токене
-    token = request.token
-    token_type = request.session.get('token_type', 'DEMO')
+    token = getattr(request, 'token', None)
+    token_type = request.session.get('token_type', 'DEMO_FREE')
     token_type_display = token.get_token_type_display() if token else token_type
     is_demo = request.session.get('is_demo', False)
-    daily_left = request.session.get('daily_generations_left', 0)
+    
+    # Получаем информацию о лимитах токенов
+    gigachat_tokens_limit = request.session.get('gigachat_tokens_limit', -1)
+    gigachat_tokens_used = request.session.get('gigachat_tokens_used', 0)
+    openai_tokens_limit = request.session.get('openai_tokens_limit', 0)
+    openai_tokens_used = request.session.get('openai_tokens_used', 0)
     
     # Для совместимости создаем фиктивный user_profile
     # В системе токенов профиль пользователя не используется
@@ -691,7 +881,10 @@ def profile_view(request):
         'token_type': token_type,
         'token_type_display': token_type_display,
         'is_demo': is_demo,
-        'daily_left': daily_left
+        'gigachat_tokens_limit': gigachat_tokens_limit,
+        'gigachat_tokens_used': gigachat_tokens_used,
+        'openai_tokens_limit': openai_tokens_limit,
+        'openai_tokens_used': openai_tokens_used
     })
 
 @token_required
@@ -865,8 +1058,7 @@ def token_auth_view(request, token):
     Обработка входа по временному токену
     
     Проверяет валидность токена и создает анонимную сессию для пользователя.
-    DEMO токены: 7 дней, безлимитные генерации
-    Платные токены: только временное ограничение
+    Поддерживает все типы токенов с лимитами GigaChat и OpenAI токенов.
     
     Args:
         request: HTTP запрос
@@ -880,19 +1072,33 @@ def token_auth_view(request, token):
         from django.utils import timezone
         
         # Пытаемся найти активный токен
-        access_token = TemporaryAccessToken.objects.get(
+        from django.db.models import Q
+        access_token = TemporaryAccessToken.objects.filter(
             token=token,
-            is_active=True,
-            expires_at__gt=timezone.now()
-        )
+            is_active=True
+        ).filter(
+            Q(expires_at__gt=timezone.now()) | Q(expires_at__isnull=True)
+        ).first()
         
-        # DEMO токены теперь без лимита генераций (7 дней)
+        if not access_token:
+            return render(request, 'generator/invalid_token.html', {
+                'token': token
+            })
+        
         # Создаём анонимную сессию
         request.session['access_token'] = str(token)
         request.session['token_type'] = access_token.token_type
-        request.session['is_demo'] = (access_token.token_type == 'DEMO')
-        request.session['daily_generations_left'] = access_token.daily_generations_left
-        request.session['expires_at'] = access_token.expires_at.isoformat()
+        request.session['is_demo'] = (access_token.token_type == 'DEMO_FREE' or access_token.token_type.startswith('HIDDEN'))
+        request.session['gigachat_tokens_limit'] = access_token.gigachat_tokens_limit
+        request.session['gigachat_tokens_used'] = access_token.gigachat_tokens_used
+        request.session['openai_tokens_limit'] = access_token.openai_tokens_limit
+        request.session['openai_tokens_used'] = access_token.openai_tokens_used
+        if access_token.expires_at:
+            request.session['expires_at'] = access_token.expires_at.isoformat()
+        else:
+            request.session['expires_at'] = None
+        # Для обратной совместимости
+        request.session['daily_generations_left'] = -1
         
         # Обновляем информацию о последнем использовании
         access_token.last_used = timezone.now()
@@ -929,16 +1135,49 @@ def invalid_token_page(request):
 
 def limit_exceeded_page(request):
     """
-    Страница превышения лимита генераций
+    Страница превышения лимита токенов
     
-    Отображается для DEMO токенов когда исчерпан дневной лимит генераций.
+    Отображается когда исчерпаны лимиты токенов GigaChat и/или OpenAI.
     """
-    daily_left = request.session.get('daily_generations_left', 0)
-    token_type = request.session.get('token_type', 'DEMO')
+    token_type = request.session.get('token_type', 'DEMO_FREE')
+    gigachat_tokens_limit = request.session.get('gigachat_tokens_limit', -1)
+    gigachat_tokens_used = request.session.get('gigachat_tokens_used', 0)
+    openai_tokens_limit = request.session.get('openai_tokens_limit', 0)
+    openai_tokens_used = request.session.get('openai_tokens_used', 0)
     
     return render(request, 'generator/limit_exceeded.html', {
-        'daily_generations_left': daily_left,
-        'token_type': token_type
+        'token_type': token_type,
+        'gigachat_tokens_limit': gigachat_tokens_limit,
+        'gigachat_tokens_used': gigachat_tokens_used,
+        'openai_tokens_limit': openai_tokens_limit,
+        'openai_tokens_used': openai_tokens_used
+    })
+
+
+def disclaimer_page(request):
+    """
+    Страница с полным текстом отказа от ответственности
+    """
+    return render(request, 'generator/disclaimer.html')
+
+def openai_limit_exceeded_page(request):
+    """
+    Страница превышения лимита OpenAI токенов
+    
+    Отображается когда исчерпан только лимит OpenAI, но GigaChat доступен.
+    """
+    token_type = request.session.get('token_type', 'UNLIMITED')
+    gigachat_tokens_limit = request.session.get('gigachat_tokens_limit', -1)
+    gigachat_tokens_used = request.session.get('gigachat_tokens_used', 0)
+    openai_tokens_limit = request.session.get('openai_tokens_limit', 0)
+    openai_tokens_used = request.session.get('openai_tokens_used', 0)
+    
+    return render(request, 'generator/openai_limit_exceeded.html', {
+        'token_type': token_type,
+        'gigachat_tokens_limit': gigachat_tokens_limit,
+        'gigachat_tokens_used': gigachat_tokens_used,
+        'openai_tokens_limit': openai_tokens_limit,
+        'openai_tokens_used': openai_tokens_used
     })
 
 # =============================================================================
@@ -986,14 +1225,19 @@ def telegram_webhook(request):
             action = callback['data']
             
             if action == 'demo':
-                # Создаём DEMO токен (7 дней, безлимит)
+                # Создаём бесплатный токен (бессрочный)
                 from .models import TemporaryAccessToken
+                from .tariffs import get_tariff_config
                 
+                tariff = get_tariff_config('DEMO_FREE')
                 token = TemporaryAccessToken.objects.create(
-                    token_type='DEMO',
-                    expires_at=timezone.now() + timedelta(days=7),
-                    daily_generations_left=-1,  # -1 = безлимит
-                    generations_reset_date=None
+                    token_type='DEMO_FREE',
+                    expires_at=None,  # Бессрочный
+                    gigachat_tokens_limit=tariff['gigachat_tokens'],
+                    gigachat_tokens_used=0,
+                    openai_tokens_limit=tariff['openai_tokens'],
+                    openai_tokens_used=0,
+                    is_active=True
                 )
                 
                 # Формируем ссылку
@@ -1002,10 +1246,12 @@ def telegram_webhook(request):
                 
                 # Отправляем ссылку пользователю
                 message = (
-                    f"🎁 Ваша демо-ссылка (5 дней, 5 генераций в день):\n\n"
+                    f"🎁 Ваша ссылка (бесплатный старт):\n\n"
                     f"{token_url}\n\n"
-                    f"📅 Ссылка активна до: {token.expires_at.strftime('%d.%m.%Y %H:%M')}\n"
-                    f"⚡ Генераций доступно сегодня: {token.daily_generations_left}"
+                    f"📝 Тариф: Бесплатный старт\n"
+                    f"⚡ GigaChat: {tariff['gigachat_tokens']:,} токенов\n"
+                    f"🤖 OpenAI: {tariff['openai_tokens']:,} токенов\n"
+                    f"📅 Срок: бессрочно"
                 )
                 
                 send_telegram_message(chat_id, message)
@@ -1100,13 +1346,16 @@ def send_welcome_message(chat_id):
     keyboard = {
         'inline_keyboard': [
             [
-                {'text': '🆓 Демо 5 дней', 'callback_data': 'demo'}
+                {'text': '🆓 Бесплатный старт', 'callback_data': 'demo_free'}
             ],
             [
-                {'text': '📅 30 дней', 'callback_data': 'buy_monthly'}
+                {'text': '📊 Базовый - 500₽/мес', 'callback_data': 'buy_basic'}
             ],
             [
-                {'text': '📆 1 год', 'callback_data': 'buy_yearly'}
+                {'text': '⭐ Про - 1500₽/мес', 'callback_data': 'buy_pro'}
+            ],
+            [
+                {'text': '🚀 Безлимит - 3500₽/мес', 'callback_data': 'buy_unlimited'}
             ]
         ]
     }
@@ -1114,9 +1363,10 @@ def send_welcome_message(chat_id):
     text = (
         "👋 Добро пожаловать в Ghostwriter!\n\n"
         "Выберите тариф для доступа к генератору контента:\n\n"
-        "🆓 <b>Демо</b> - 5 дней, 5 генераций в день (бесплатно)\n"
-        "📅 <b>30 дней</b> - безлимитные генерации\n"
-        "📆 <b>1 год</b> - безлимитные генерации\n\n"
+        "🆓 <b>Бесплатный старт</b> - 10 000 GigaChat + 500 OpenAI (бессрочно, бесплатно)\n"
+        "📊 <b>Базовый</b> - 50 000 GigaChat + 3 000 OpenAI (500₽/мес)\n"
+        "⭐ <b>Про</b> - 200 000 GigaChat + 15 000 OpenAI (1 500₽/мес)\n"
+        "🚀 <b>Безлимит</b> - ∞ GigaChat + 50 000 OpenAI (3 500₽/мес)\n\n"
         "Нажмите кнопку ниже для получения ссылки доступа:"
     )
     
@@ -1149,18 +1399,16 @@ def api_create_token(request):
     
     POST /api/tokens/create/
     {
-        "token_type": "DEMO",  # или "MONTHLY", "YEARLY"
-        "expires_days": 5,
-        "daily_limit": 5  # -1 для безлимита
+        "token_type": "DEMO_FREE",  # или "BASIC", "PRO", "UNLIMITED", "HIDDEN_14D", "HIDDEN_30D", "DEVELOPER"
+        "telegram_user_id": 123456789  # опционально, для защиты от мультиаккаунтов
     }
     
     Returns:
         JSON с данными токена:
         {
             "token": "uuid",
-            "token_type": "DEMO",
-            "expires_at": "2024-01-20T12:00:00Z",
-            "daily_limit": 5,
+            "token_type": "DEMO_FREE",
+            "expires_at": "2024-01-20T12:00:00Z" или null,
             "url": "http://site.com/auth/token/uuid/"
         }
     """
@@ -1168,6 +1416,7 @@ def api_create_token(request):
     from django.utils import timezone
     from datetime import timedelta
     from .models import TemporaryAccessToken
+    from .tariffs import get_tariff_config
     
     # Проверка API ключа (опционально)
     api_key = request.headers.get('X-API-Key')
@@ -1181,31 +1430,104 @@ def api_create_token(request):
     
     try:
         # Парсим данные запроса
-        data = json.loads(request.body)
+        data = json.loads(request.body) if request.body else {}
         
-        token_type = data.get('token_type', 'DEMO')
-        expires_days = data.get('expires_days', 5)
-        daily_limit = data.get('daily_limit', 5)
+        token_type = data.get('token_type', 'DEMO_FREE')
+        telegram_user_id = data.get('telegram_user_id')
         
-        # Валидация типа токена
-        valid_types = ['DEMO', 'MONTHLY', 'YEARLY', 'DEVELOPER']
-        if token_type not in valid_types:
+        # Получаем конфигурацию тарифа
+        tariff = get_tariff_config(token_type)
+        if not tariff:
             return JsonResponse({
                 'error': 'Invalid token type',
-                'message': f'Token type must be one of: {", ".join(valid_types)}'
+                'message': f'Unknown token type: {token_type}'
             }, status=400)
+        
+        # ЗАЩИТА ОТ МУЛЬТИАККАУНТОВ
+        if telegram_user_id:
+            from django.db.models import Q
+            # Проверяем существующие активные токены для этого пользователя
+            existing_tokens = TemporaryAccessToken.objects.filter(
+                telegram_user_id=telegram_user_id,
+                is_active=True
+            )
+            
+            # Для DEMO_FREE - разрешаем только один активный токен
+            if token_type == 'DEMO_FREE':
+                demo_tokens = existing_tokens.filter(token_type='DEMO_FREE')
+                # Проверяем, не истек ли токен (бессрочные или не истекшие)
+                now_check = timezone.now()
+                active_demo = demo_tokens.filter(
+                    Q(expires_at__isnull=True) | Q(expires_at__gte=now_check)
+                )
+                
+                if active_demo.exists():
+                    # Находим самый свежий токен
+                    latest_token = active_demo.order_by('-created_at').first()
+                    site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+                    existing_url = f"{site_url}/auth/token/{latest_token.token}/"
+                    
+                    return JsonResponse({
+                        'error': 'Demo token already exists',
+                        'message': 'У вас уже есть активный бесплатный токен. Один пользователь может иметь только один бесплатный токен.',
+                        'existing_token_url': existing_url,
+                        'existing_token_created': latest_token.created_at.isoformat()
+                    }, status=409)
+            
+            # Для платных тарифов - проверяем активные подписки
+            elif token_type in ['BASIC', 'PRO', 'UNLIMITED']:
+                paid_tokens = existing_tokens.filter(
+                    token_type__in=['BASIC', 'PRO', 'UNLIMITED'],
+                    subscription_start__isnull=False
+                )
+                # Проверяем, не истекла ли подписка
+                now_check = timezone.now()
+                active_subscriptions = paid_tokens.filter(
+                    next_renewal__gte=now_check
+                )
+                
+                if active_subscriptions.exists():
+                    # Находим активную подписку
+                    active_sub = active_subscriptions.order_by('-created_at').first()
+                    site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+                    existing_url = f"{site_url}/auth/token/{active_sub.token}/"
+                    
+                    return JsonResponse({
+                        'error': 'Active subscription exists',
+                        'message': f'У вас уже есть активная подписка ({active_sub.get_token_type_display()}). Дождитесь окончания текущей подписки или отмените её.',
+                        'existing_token_url': existing_url,
+                        'subscription_type': active_sub.token_type,
+                        'next_renewal': active_sub.next_renewal.isoformat() if active_sub.next_renewal else None
+                    }, status=409)
         
         # Создаем токен
         now = timezone.now()
-        expires_at = now + timedelta(days=expires_days)
+        
+        # Определяем expires_at
+        if tariff['duration_days'] is None:
+            expires_at = None  # Бессрочный
+        else:
+            expires_at = now + timedelta(days=tariff['duration_days'])
+        
+        # Определяем subscription_start и next_renewal для подписок
+        subscription_start = None
+        next_renewal = None
+        if tariff.get('is_subscription'):
+            subscription_start = now
+            next_renewal = now + timedelta(days=tariff['duration_days'])
         
         token = TemporaryAccessToken.objects.create(
             token_type=token_type,
             expires_at=expires_at,
-            daily_generations_left=daily_limit,
-            generations_reset_date=now.date() if token_type == 'DEMO' else None,
+            gigachat_tokens_limit=tariff['gigachat_tokens'],
+            gigachat_tokens_used=0,
+            openai_tokens_limit=tariff['openai_tokens'],
+            openai_tokens_used=0,
+            subscription_start=subscription_start,
+            next_renewal=next_renewal,
             is_active=True,
-            total_used=0
+            total_used=0,
+            telegram_user_id=telegram_user_id  # Сохраняем для защиты от мультиаккаунтов
         )
         
         # Формируем URL токена
@@ -1216,11 +1538,12 @@ def api_create_token(request):
         response_data = {
             'token': str(token.token),
             'token_type': token.token_type,
-            'expires_at': token.expires_at.isoformat(),
-            'daily_limit': token.daily_generations_left,
+            'expires_at': token.expires_at.isoformat() if token.expires_at else None,
             'url': token_url,
             'created_at': token.created_at.isoformat(),
-            'is_active': token.is_active
+            'is_active': token.is_active,
+            'gigachat_tokens_limit': token.gigachat_tokens_limit,
+            'openai_tokens_limit': token.openai_tokens_limit
         }
         
         return JsonResponse(response_data, status=201)
@@ -1258,9 +1581,12 @@ def api_token_info(request, token):
             'token': str(token_obj.token),
             'token_type': token_obj.token_type,
             'is_active': token_obj.is_active,
-            'expires_at': token_obj.expires_at.isoformat(),
+            'expires_at': token_obj.expires_at.isoformat() if token_obj.expires_at else None,
             'created_at': token_obj.created_at.isoformat(),
-            'daily_generations_left': token_obj.daily_generations_left,
+            'gigachat_tokens_limit': token_obj.gigachat_tokens_limit,
+            'gigachat_tokens_used': token_obj.gigachat_tokens_used,
+            'openai_tokens_limit': token_obj.openai_tokens_limit,
+            'openai_tokens_used': token_obj.openai_tokens_used,
             'total_used': token_obj.total_used,
             'last_used': token_obj.last_used.isoformat() if token_obj.last_used else None,
             'is_expired': token_obj.is_expired()
@@ -1339,3 +1665,371 @@ def api_track_subscription_click(request):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+# =============================================================================
+# PAYMENT API ENDPOINTS
+# =============================================================================
+
+@csrf_exempt
+@require_POST
+def api_create_payment(request):
+    """
+    API endpoint для создания записи о платеже
+    
+    POST /api/payments/create/
+    {
+        "external_id": "yookassa_payment_id",
+        "telegram_user_id": 123456789,
+        "telegram_username": "username",
+        "amount": 299.00,
+        "payment_system": "yookassa",
+        "description": "30 дней подписки",
+        "payment_url": "https://yookassa.ru/..."
+    }
+    """
+    import json
+    from .models import Payment
+    from decimal import Decimal
+    
+    # Проверка API ключа
+    api_key = request.headers.get('X-API-Key')
+    expected_key = getattr(settings, 'DJANGO_API_KEY', None)
+    
+    if expected_key and api_key != expected_key:
+        return JsonResponse({
+            'error': 'Unauthorized',
+            'message': 'Invalid API key'
+        }, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        
+        external_id = data.get('external_id')
+        telegram_user_id = data.get('telegram_user_id')
+        amount = data.get('amount')
+        
+        if not external_id or not telegram_user_id or not amount:
+            return JsonResponse({
+                'error': 'Missing required fields',
+                'message': 'external_id, telegram_user_id and amount are required'
+            }, status=400)
+        
+        # Проверяем, не существует ли уже такой платёж
+        if Payment.objects.filter(external_id=external_id).exists():
+            return JsonResponse({
+                'error': 'Payment already exists',
+                'message': f'Payment with external_id {external_id} already exists'
+            }, status=409)
+        
+        # Создаём запись о платеже
+        payment = Payment.objects.create(
+            external_id=external_id,
+            telegram_user_id=telegram_user_id,
+            telegram_username=data.get('telegram_username', ''),
+            amount=Decimal(str(amount)),
+            payment_system=data.get('payment_system', 'yookassa'),
+            description=data.get('description', '30 дней подписки GhostCopywriter'),
+            payment_url=data.get('payment_url', ''),
+            status='pending'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'payment_id': str(payment.id),
+            'external_id': payment.external_id,
+            'status': payment.status
+        }, status=201)
+    
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'error': 'Invalid JSON',
+            'message': 'Request body must be valid JSON'
+        }, status=400)
+    
+    except Exception as e:
+        return JsonResponse({
+            'error': 'Internal server error',
+            'message': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+@require_POST
+def api_yookassa_webhook(request):
+    """
+    Webhook endpoint для обработки уведомлений от ЮКасса
+    
+    POST /api/payments/yookassa/webhook/
+    
+    ЮКасса отправляет уведомления о событиях:
+    - payment.succeeded: Платёж успешно завершён
+    - payment.canceled: Платёж отменён
+    - refund.succeeded: Возврат выполнен
+    
+    После успешного платежа автоматически создаётся токен
+    и отправляется уведомление пользователю в Telegram.
+    """
+    import json
+    import hmac
+    import hashlib
+    from django.utils import timezone
+    from datetime import timedelta
+    from .models import Payment, TemporaryAccessToken
+    
+    try:
+        # Парсим данные от ЮКасса
+        data = json.loads(request.body)
+        event_type = data.get('event')
+        payment_object = data.get('object', {})
+        
+        print(f"ЮКасса webhook: {event_type}")
+        print(f"Payment object: {json.dumps(payment_object, indent=2)}")
+        
+        if event_type == 'payment.succeeded':
+            # Платёж успешен
+            external_id = payment_object.get('id')
+            metadata = payment_object.get('metadata', {})
+            
+            # Ищем платёж в базе
+            try:
+                payment = Payment.objects.get(external_id=external_id)
+            except Payment.DoesNotExist:
+                # Создаём запись, если её нет (на случай если бот не сохранил)
+                telegram_user_id = metadata.get('telegram_user_id')
+                telegram_username = metadata.get('telegram_username', '')
+                
+                if not telegram_user_id:
+                    print(f"WARNING: No telegram_user_id in metadata for payment {external_id}")
+                    return JsonResponse({'status': 'ok'})
+                
+                payment = Payment.objects.create(
+                    external_id=external_id,
+                    telegram_user_id=telegram_user_id,
+                    telegram_username=telegram_username,
+                    amount=payment_object.get('amount', {}).get('value', 299),
+                    payment_system='yookassa',
+                    status='pending'
+                )
+            
+            # Обновляем статус платежа
+            payment.status = 'succeeded'
+            payment.paid_at = timezone.now()
+            payment.metadata = payment_object
+            
+            # Определяем тип тарифа из metadata
+            tariff_type = metadata.get('tariff', 'BASIC')
+            
+            # Получаем конфигурацию тарифа
+            from .tariffs import get_tariff_config
+            tariff = get_tariff_config(tariff_type)
+            
+            if not tariff:
+                print(f"WARNING: Unknown tariff type {tariff_type}, using BASIC")
+                tariff = get_tariff_config('BASIC')
+            
+            # Создаём токен с правильными лимитами
+            now = timezone.now()
+            
+            if tariff['duration_days'] is None:
+                expires_at = None
+            else:
+                expires_at = now + timedelta(days=tariff['duration_days'])
+            
+            subscription_start = None
+            next_renewal = None
+            if tariff.get('is_subscription'):
+                subscription_start = now
+                next_renewal = now + timedelta(days=tariff['duration_days'])
+            
+            token = TemporaryAccessToken.objects.create(
+                token_type=tariff_type,
+                expires_at=expires_at,
+                gigachat_tokens_limit=tariff['gigachat_tokens'],
+                gigachat_tokens_used=0,
+                openai_tokens_limit=tariff['openai_tokens'],
+                openai_tokens_used=0,
+                subscription_start=subscription_start,
+                next_renewal=next_renewal,
+                is_active=True,
+                telegram_user_id=telegram_user_id  # Сохраняем для защиты от мультиаккаунтов
+            )
+            
+            payment.token = token
+            payment.save()
+            
+            # Формируем URL токена
+            site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+            token_url = f"{site_url}/auth/token/{token.token}/"
+            
+            # Отправляем уведомление в Telegram
+            send_payment_success_notification(
+                payment.telegram_user_id,
+                token_url,
+                token.expires_at,
+                tariff_type
+            )
+            
+            print(f"✅ Платёж {external_id} успешно обработан. Токен: {token.token}, тариф: {tariff_type}")
+        
+        elif event_type == 'payment.canceled':
+            # Платёж отменён
+            external_id = payment_object.get('id')
+            
+            try:
+                payment = Payment.objects.get(external_id=external_id)
+                payment.status = 'canceled'
+                payment.metadata = payment_object
+                payment.save()
+                print(f"❌ Платёж {external_id} отменён")
+            except Payment.DoesNotExist:
+                print(f"WARNING: Payment {external_id} not found for cancellation")
+        
+        elif event_type == 'refund.succeeded':
+            # Возврат выполнен
+            payment_id = payment_object.get('payment_id')
+            
+            try:
+                payment = Payment.objects.get(external_id=payment_id)
+                payment.status = 'refunded'
+                payment.save()
+                
+                # Деактивируем токен при возврате
+                if payment.token:
+                    payment.token.is_active = False
+                    payment.token.save()
+                
+                print(f"💸 Возврат для платежа {payment_id} выполнен")
+            except Payment.DoesNotExist:
+                print(f"WARNING: Payment {payment_id} not found for refund")
+        
+        return JsonResponse({'status': 'ok'})
+    
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    
+    except Exception as e:
+        print(f"Ошибка в yookassa webhook: {e}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_POST
+def api_confirm_payment(request, payment_id):
+    """
+    API endpoint для подтверждения платежа и привязки токена
+    
+    POST /api/payments/{payment_id}/confirm/
+    {
+        "token_uuid": "uuid токена"
+    }
+    
+    Используется ботом после проверки статуса платежа вручную.
+    """
+    import json
+    from django.utils import timezone
+    from .models import Payment, TemporaryAccessToken
+    
+    # Проверка API ключа
+    api_key = request.headers.get('X-API-Key')
+    expected_key = getattr(settings, 'DJANGO_API_KEY', None)
+    
+    if expected_key and api_key != expected_key:
+        return JsonResponse({
+            'error': 'Unauthorized'
+        }, status=401)
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+        token_uuid = data.get('token_uuid')
+        
+        # Ищем платёж
+        try:
+            payment = Payment.objects.get(external_id=payment_id)
+        except Payment.DoesNotExist:
+            return JsonResponse({
+                'error': 'Payment not found'
+            }, status=404)
+        
+        # Обновляем статус
+        payment.status = 'succeeded'
+        payment.paid_at = timezone.now()
+        
+        # Привязываем токен, если указан
+        if token_uuid:
+            try:
+                token = TemporaryAccessToken.objects.get(token=token_uuid)
+                payment.token = token
+            except TemporaryAccessToken.DoesNotExist:
+                pass
+        
+        payment.save()
+        
+        return JsonResponse({
+            'success': True,
+            'payment_id': str(payment.id),
+            'status': payment.status
+        })
+    
+    except Exception as e:
+        return JsonResponse({
+            'error': str(e)
+        }, status=500)
+
+
+def send_payment_success_notification(telegram_user_id, token_url, expires_at, tariff_type='BASIC'):
+    """
+    Отправляет уведомление об успешной оплате в Telegram
+    
+    Args:
+        telegram_user_id: ID пользователя в Telegram
+        token_url: Ссылка с токеном доступа
+        expires_at: Дата истечения токена (может быть None)
+        tariff_type: Тип тарифа
+    """
+    from django.conf import settings
+    import requests
+    from .tariffs import get_tariff_config
+    
+    bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None)
+    if not bot_token:
+        print("ERROR: TELEGRAM_BOT_TOKEN не настроен")
+        return False
+    
+    tariff = get_tariff_config(tariff_type)
+    tariff_name = tariff['name'] if tariff else tariff_type
+    
+    if expires_at:
+        expires_str = expires_at.strftime('%d.%m.%Y %H:%M')
+    else:
+        expires_str = "бессрочно"
+    
+    message = (
+        "✅ <b>Оплата прошла успешно!</b>\n\n"
+        "🎉 Спасибо за покупку подписки GhostCopywriter!\n\n"
+        f"📝 <b>Ваш тариф:</b> {tariff_name}\n"
+        f"📅 <b>Активен до:</b> {expires_str}\n\n"
+        f"🔗 <b>Ваша ссылка:</b>\n{token_url}\n\n"
+        "💡 <i>Сохраните эту ссылку - она работает как логин!</i>"
+    )
+    
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        'chat_id': telegram_user_id,
+        'text': message,
+        'parse_mode': 'HTML'
+    }
+    
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            print(f"✅ Уведомление отправлено пользователю {telegram_user_id}")
+            return True
+        else:
+            print(f"❌ Ошибка отправки уведомления: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ Исключение при отправке уведомления: {e}")
+        return False

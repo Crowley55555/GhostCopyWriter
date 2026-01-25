@@ -88,13 +88,118 @@
 
     <!-- Footer -->
     <footer class="bg-dark text-light py-4 mt-5">
-        <div class="container text-center">
-            <p class="mb-0">
-                <i class="bi bi-heart-fill text-danger me-1"></i>
-                Создано с помощью AI
-            </p>
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-6 text-center text-md-start mb-3 mb-md-0">
+                    <p class="mb-0">
+                        <i class="bi bi-heart-fill text-danger me-1"></i>
+                        Создано с помощью AI
+                    </p>
+                </div>
+                <div class="col-md-6 text-center text-md-end">
+                    <p class="mb-2 text-warning" style="font-size: 0.9rem; font-weight: 500;">
+                        ⚠️ Сгенерированный контент = ваша ответственность
+                    </p>
+                    <a href="{% url 'disclaimer_page' %}" class="text-light text-decoration-none" style="font-size: 0.85rem;">
+                        <i class="bi bi-shield-exclamation me-1"></i>Отказ от ответственности
+                    </a>
+                </div>
+            </div>
         </div>
     </footer>
+
+    <!-- Модальное окно с отказом от ответственности при первом входе -->
+    <div class="modal fade" id="disclaimerModal" tabindex="-1" aria-labelledby="disclaimerModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="disclaimerModalLabel">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>ВАЖНО: Отказ от ответственности
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning mb-3">
+                        <strong>⚠️ Сгенерированный контент = ваша ответственность</strong><br>
+                        Пользователь самостоятельно несет все риски, связанные с использованием сгенерированного контента.
+                    </div>
+                    
+                    <h6>1. Отсутствие гарантий качества</h6>
+                    <p class="small">1.1. Сервис GhostCopywriter генерирует контент на основе нейронных сетей без гарантии точности, актуальности или соответствия фактам.</p>
+                    <p class="small">1.2. Исполнитель не проверяет и не редактирует автоматически созданный контент.</p>
+                    <p class="small">1.3. Возможны ошибки, неточности, неуместные формулировки, нарушения стиля или авторских прав.</p>
+                    
+                    <h6 class="mt-3">2. Ответственность за публикацию</h6>
+                    <p class="small"><strong>2.1. Пользователь самостоятельно несет 100% ответственность за:</strong></p>
+                    <ul class="small">
+                        <li>правдивость и достоверность опубликованного контента;</li>
+                        <li>соблюдение законодательства (рекламные правила, авторские права, товарные знаки);</li>
+                        <li>отсутствие запрещенной информации (экстремизм, насилие, дискриминация);</li>
+                        <li>претензии со стороны платформ (блокировка аккаунтов, удаление постов).</li>
+                    </ul>
+                    <p class="small"><strong>2.2. Исполнитель не несет ответственности за любые последствия публикации, включая:</strong></p>
+                    <ul class="small">
+                        <li>финансовые убытки от штрафов или блокировок;</li>
+                        <li>репутационные потери;</li>
+                        <li>судебные иски от третьих лиц.</li>
+                    </ul>
+                    
+                    <h6 class="mt-3">3. Платформы социальных сетей</h6>
+                    <p class="small">3.1. Пользователь самостоятельно проверяет сгенерированный контент на соответствие Правилам Instagram, VK, Facebook, TikTok, YouTube и других платформ, Рекламному законодательству РФ (№ 38-ФЗ), Закону о рекламе и маркировке (единый реестр РКН).</p>
+                    <p class="small">3.2. Исполнитель не дает рекомендаций по размещению рекламы и не несет ответственности за нарушения.</p>
+                    
+                    <h6 class="mt-3">4. Авторские права и плагиат</h6>
+                    <p class="small">4.1. Сгенерированный контент может содержать элементы чужих текстов из обучающих данных ИИ.</p>
+                    <p class="small">4.2. Пользователь обязан самостоятельно проверить уникальность через сервисы (Text.ru, Advego, Copyleaks).</p>
+                    <p class="small">4.3. Исполнитель не гарантирует 100% оригинальность и не отвечает за претензии правообладателей.</p>
+                    
+                    <h6 class="mt-3">5. Ограничение ответственности Исполнителя</h6>
+                    <p class="small">5.1. Максимальная ответственность Исполнителя = стоимость последней оплаченной подписки.</p>
+                    <p class="small">5.2. Исполнитель не отвечает за косвенные убытки, упущенную выгоду, моральный вред.</p>
+                    <p class="small">5.3. Пользователь подтверждает, что понимает риски ИИ-генерации и принимает их добровольно.</p>
+                    
+                    <div class="alert alert-info mt-3 mb-0">
+                        <h6 class="alert-heading">6. Рекомендации Пользователю (не обязательны)</h6>
+                        <ul class="mb-0 small">
+                            <li>Проверять факты и цифры вручную;</li>
+                            <li>Использовать уникализаторы текста;</li>
+                            <li>Соблюдать лимиты платформ по автопостингу;</li>
+                            <li>Маркировать рекламу (#реклама, #продажа);</li>
+                            <li>Тестировать контент на небольшой аудитории.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <a href="{% url 'disclaimer_page' %}" class="btn btn-outline-info" target="_blank">
+                        <i class="bi bi-file-text me-1"></i>Полный текст
+                    </a>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
+                        <i class="bi bi-check-circle me-1"></i>Понятно
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Показываем модальное окно при первом входе через токен (если не было показано ранее)
+        document.addEventListener('DOMContentLoaded', function() {
+            // Проверяем, есть ли токен в сессии (пользователь авторизован)
+            const hasToken = {% if request.session.access_token %}true{% else %}false{% endif %};
+            
+            if (hasToken) {
+                const disclaimerShown = sessionStorage.getItem('disclaimerShown');
+                if (!disclaimerShown) {
+                    const disclaimerModalElement = document.getElementById('disclaimerModal');
+                    if (disclaimerModalElement) {
+                        const disclaimerModal = new bootstrap.Modal(disclaimerModalElement);
+                        disclaimerModal.show();
+                        sessionStorage.setItem('disclaimerShown', 'true');
+                    }
+                }
+            }
+        });
+    </script>
 
     <!-- Bootstrap 5 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

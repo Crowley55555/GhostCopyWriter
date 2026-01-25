@@ -1,0 +1,103 @@
+{% extends 'generator/index.html' %}
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-lg border-0 fade-in">
+                <div class="card-header bg-info bg-gradient text-white text-center">
+                    <div class="mb-3" style="font-size: 4rem;">🤖</div>
+                    <h2 class="mb-0">Лимит OpenAI токенов исчерпан</h2>
+                </div>
+                <div class="card-body p-4">
+                    <p class="lead text-center mb-4">
+                        Вы исчерпали лимит токенов OpenAI, но можете продолжать использовать GigaChat!
+                    </p>
+
+                    <div class="alert alert-success">
+                        <h5 class="alert-heading">✅ GigaChat доступен</h5>
+                        <p class="mb-0">
+                            Вы можете продолжать генерировать контент через GigaChat без ограничений.
+                        </p>
+                    </div>
+
+                    <div class="alert alert-secondary text-start mb-4">
+                        <h5 class="alert-heading">📊 Статистика использования:</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                            <span><strong>Тип тарифа:</strong></span>
+                            <span class="badge bg-info">{{ token_type|default:"Неизвестно" }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                            <span><strong>GigaChat токены:</strong></span>
+                            {% if gigachat_tokens_limit == -1 %}
+                            <span class="badge bg-success">Безлимит (использовано: {{ gigachat_tokens_used|default:0|floatformat:0 }})</span>
+                            {% else %}
+                            <span class="badge bg-success">
+                                {{ gigachat_tokens_used|default:0|floatformat:0 }} / {{ gigachat_tokens_limit|floatformat:0 }} (доступно)
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><strong>OpenAI токены:</strong></span>
+                            <span class="badge bg-danger">
+                                {{ openai_tokens_used|default:0|floatformat:0 }} / {{ openai_tokens_limit|floatformat:0 }} (исчерпано)
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <h5 class="alert-heading">💡 Что делать?</h5>
+                        <ul class="mb-0">
+                            {% if token_type == 'UNLIMITED' %}
+                            <li><strong>Докупите пакет OpenAI токенов</strong> - для продолжения использования OpenAI</li>
+                            <li><strong>Используйте GigaChat</strong> - он доступен без ограничений</li>
+                            {% else %}
+                            <li><strong>Обновите тариф</strong> - получите больше OpenAI токенов</li>
+                            <li><strong>Используйте GigaChat</strong> - он доступен для вашего тарифа</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+
+                    {% if token_type == 'UNLIMITED' %}
+                    <div class="alert alert-primary text-white">
+                        <h5 class="alert-heading">💰 Докупите пакет OpenAI токенов</h5>
+                        <p class="mb-3">
+                            Для тарифа "Безлимит" доступна покупка дополнительных пакетов OpenAI токенов.
+                        </p>
+                        <p class="mb-0">
+                            Обратитесь в поддержку через Telegram бота для покупки.
+                        </p>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-primary text-white">
+                        <h5 class="alert-heading">🚀 Обновите тариф для большего количества OpenAI токенов!</h5>
+                        <p class="mb-3">
+                            Доступные тарифы:
+                        </p>
+                        <ul class="mb-0">
+                            <li>⭐ <strong>Про</strong> - 200 000 GigaChat + 15 000 OpenAI (1 500₽/мес)</li>
+                            <li>🚀 <strong>Безлимит</strong> - ∞ GigaChat + 50 000 OpenAI (3 500₽/мес)</li>
+                        </ul>
+                    </div>
+                    {% endif %}
+
+                    <div class="text-center mt-4">
+                        <a href="{% url 'index' %}" class="btn btn-success btn-lg me-2">
+                            <i class="bi bi-arrow-left-circle me-2"></i>Продолжить с GigaChat
+                        </a>
+                        <a href="https://t.me/Ghostcopywriterregistration_bot" class="btn btn-primary btn-lg" target="_blank">
+                            <i class="bi bi-telegram me-2"></i>Обновить тариф
+                        </a>
+                    </div>
+
+                    <div class="mt-4 text-center text-muted">
+                        <small>
+                            💡 GigaChat и OpenAI - это разные AI модели. Вы можете использовать любую из доступных.<br>
+                            🔒 Все ваши данные сохранены и будут доступны после обновления лимита
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
