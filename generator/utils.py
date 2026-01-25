@@ -81,17 +81,17 @@ def get_user_for_generation(request):
 
 def is_demo_token(request):
     """
-    Проверяет, используется ли DEMO токен
+    Проверяет, используется ли бесплатный или скрытый токен
     
     Args:
         request: HTTP запрос
     
     Returns:
-        bool: True если используется DEMO токен
+        bool: True если используется бесплатный или скрытый токен
     """
     token = get_token_from_request(request)
     if token:
-        return token.token_type == 'DEMO'
+        return token.token_type in ['DEMO_FREE', 'HIDDEN_14D', 'HIDDEN_30D']
     return False
 
 
@@ -106,7 +106,7 @@ def get_access_type(request):
         request: HTTP запрос
     
     Returns:
-        str: 'demo', 'monthly', 'yearly', 'developer', или 'anonymous'
+        str: Тип токена в нижнем регистре или 'anonymous'
     """
     token = get_token_from_request(request)
     if token:

@@ -81,7 +81,7 @@ def decrypt_data(token: str) -> dict:
 # API CLIENT FUNCTIONS
 # =============================================================================
 
-def generate_text_and_prompt(payload: dict) -> dict:
+def generate_text_and_prompt(payload: dict, token=None) -> dict:
     """
     Генерирует текст и промпт для изображения через Flask API
     
@@ -90,9 +90,10 @@ def generate_text_and_prompt(payload: dict) -> dict:
     
     Args:
         payload (dict): Параметры генерации из Django формы
+        token: TemporaryAccessToken для учёта токенов OpenAI (опционально)
     
     Returns:
-        dict: {'text': str, 'image_prompt': str}
+        dict: {'text': str, 'image_prompt': str, 'tokens_used': int}
     
     Raises:
         Exception: При ошибках подключения или обработки данных
@@ -120,6 +121,21 @@ def generate_text_and_prompt(payload: dict) -> dict:
         try:
             result = decrypt_data(data)
             print(f"Данные расшифрованы: {result}")
+            
+            # Учитываем токены OpenAI (если Flask API вернул информацию о токенах)
+            tokens_used = result.get('tokens_used', 0)
+            if token and tokens_used > 0:
+                try:
+                    if not token.consume_openai_tokens(tokens_used):
+                        # Лимит исчерпан
+                        return {
+                            'text': 'WARNING: Лимит токенов OpenAI исчерпан. Пожалуйста, обновите подписку или выберите другой тариф.',
+                            'image_prompt': None,
+                            'tokens_used': 0
+                        }
+                except Exception as e:
+                    print(f"Ошибка при учёте токенов OpenAI: {e}")
+            
             return result
         except Exception as decrypt_error:
             print(f"ERROR: Ошибка расшифровки ответа: {decrypt_error}")
@@ -173,7 +189,18 @@ def generate_image(image_prompt: str) -> str:
         # Расшифровываем результат
         result = decrypt_data(data)
         print(f"Изображение получено: {result}")
-        return result['image_url']
+        
+        # Учитываем токены OpenAI для DALL-E (примерная оценка: ~1000 токенов на изображение)
+        tokens_used = result.get('tokens_used', 1000)
+        if token:
+            try:
+                if not token.consume_openai_tokens(tokens_used):
+                    # Лимит исчерпан
+                    return None
+            except Exception as e:
+                print(f"Ошибка при учёте токенов OpenAI: {e}")
+        
+        return result.get('image_url')
         
     except Exception as e:
         print(f"Ошибка при генерации изображения через Flask API: {e}")

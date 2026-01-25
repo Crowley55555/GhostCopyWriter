@@ -75,9 +75,19 @@ class TokenAccessMiddleware:
                 self._clear_session(request)
                 return redirect('invalid_token_page')
             
-            # DEMO токены теперь без лимита генераций (7 дней)
-            # Оставляем обновление сессии для совместимости
-            request.session['daily_generations_left'] = -1  # -1 = безлимит
+            # Сохраняем токен в request для использования в views
+            request.token = token
+            
+            # Обновляем сессию с информацией о лимитах токенов
+            request.session['token_type'] = token.token_type
+            request.session['gigachat_tokens_limit'] = token.gigachat_tokens_limit
+            request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+            request.session['openai_tokens_limit'] = token.openai_tokens_limit
+            request.session['openai_tokens_used'] = token.openai_tokens_used
+            
+            # Для обратной совместимости
+            request.session['is_demo'] = (token.token_type == 'DEMO_FREE' or token.token_type.startswith('HIDDEN'))
+            request.session['daily_generations_left'] = -1  # Устаревшее поле
         
         except TemporaryAccessToken.DoesNotExist:
             # Токен не найден в базе - очищаем сессию
@@ -116,3 +126,7 @@ class TokenAccessMiddleware:
         request.session.pop('token_type', None)
         request.session.pop('is_demo', None)
         request.session.pop('daily_generations_left', None)
+        request.session.pop('gigachat_tokens_limit', None)
+        request.session.pop('gigachat_tokens_used', None)
+        request.session.pop('openai_tokens_limit', None)
+        request.session.pop('openai_tokens_used', None)

@@ -26,6 +26,7 @@ urlpatterns = [
     path('generator/', views.generator_view, name='index'),
     path('regenerate-text/', views.regenerate_text, name='regenerate_text'),
     path('regenerate-image/', views.regenerate_image, name='regenerate_image'),
+    path('generate-image-from-text/', views.generate_image_from_text, name='generate_image_from_text'),
     
     # DEPRECATED: Старая система регистрации/входа (заглушки)
     # Теперь используем систему токенов для доступа
@@ -45,6 +46,8 @@ urlpatterns = [
     path('token-required/', views.token_required_page, name='token_required_page'),
     path('invalid-token/', views.invalid_token_page, name='invalid_token_page'),
     path('limit-exceeded/', views.limit_exceeded_page, name='limit_exceeded_page'),
+    path('openai-limit-exceeded/', views.openai_limit_exceeded_page, name='openai_limit_exceeded_page'),
+    path('disclaimer/', views.disclaimer_page, name='disclaimer_page'),
     
     # Telegram webhook
     path('telegram/webhook/', views.telegram_webhook, name='telegram_webhook'),

@@ -1,4 +1,4 @@
-from .models import UserProfile, Generation, TemporaryAccessToken, GenerationTemplate, GigaChatTokenUsage, SubscriptionButtonClick
+from .models import UserProfile, Generation, TemporaryAccessToken, GenerationTemplate, GigaChatTokenUsage, SubscriptionButtonClick, Payment
 from django.contrib import admin
 from django.utils.html import format_html
 from django.db.models import Sum, Count, Avg
@@ -17,7 +17,8 @@ class TemporaryAccessTokenAdmin(admin.ModelAdmin):
         'created_at',
         'expires_at',
         'is_active_display',
-        'daily_generations_left',
+        'gigachat_tokens_display',
+        'openai_tokens_display',
         'total_used',
         'last_used'
     ]
@@ -39,7 +40,9 @@ class TemporaryAccessTokenAdmin(admin.ModelAdmin):
         'created_at',
         'last_used',
         'current_ip',
-        'total_used'
+        'total_used',
+        'gigachat_tokens_used',
+        'openai_tokens_used'
     ]
     
     fieldsets = (
@@ -49,12 +52,21 @@ class TemporaryAccessTokenAdmin(admin.ModelAdmin):
         ('Временные рамки', {
             'fields': ('created_at', 'expires_at')
         }),
-        ('Лимиты использования', {
-            'fields': ('daily_generations_left', 'generations_reset_date', 'total_used'),
-            'description': 'Для DEMO токенов применяется дневной лимит генераций'
+        ('Лимиты токенов GigaChat', {
+            'fields': ('gigachat_tokens_limit', 'gigachat_tokens_used'),
+            'description': 'Лимит токенов GigaChat (-1 = безлимит)'
         }),
-        ('Технические данные', {
-            'fields': ('last_used', 'current_ip'),
+        ('Лимиты токенов OpenAI', {
+            'fields': ('openai_tokens_limit', 'openai_tokens_used'),
+            'description': 'Лимит токенов OpenAI (-1 = безлимит, 0 = недоступен)'
+        }),
+        ('Подписки', {
+            'fields': ('subscription_start', 'next_renewal'),
+            'description': 'Информация о подписке (для платных тарифов)',
+            'classes': ('collapse',)
+        }),
+        ('Статистика использования', {
+            'fields': ('total_used', 'last_used', 'current_ip'),
             'classes': ('collapse',)
         }),
     )
@@ -97,12 +109,114 @@ class TemporaryAccessTokenAdmin(admin.ModelAdmin):
         self.message_user(request, f'Активировано токенов: {count}')
     activate_tokens.short_description = 'Активировать выбранные токены'
     
-    def reset_daily_limits(self, request, queryset):
-        """Действие для сброса дневных лимитов для DEMO токенов"""
-        demo_tokens = queryset.filter(token_type='DEMO')
-        count = demo_tokens.update(daily_generations_left=5)
-        self.message_user(request, f'Сброшено лимитов для {count} DEMO токенов')
-    reset_daily_limits.short_description = 'Сбросить дневные лимиты (DEMO)'
+    def gigachat_tokens_display(self, obj):
+        """Отображение использования токенов GigaChat"""
+        if obj.gigachat_tokens_limit == -1:
+            return format_html(
+                '<span style="color: green;">∞ (использовано: {:,})</span>',
+                obj.gigachat_tokens_used
+            )
+        percentage = (obj.gigachat_tokens_used / obj.gigachat_tokens_limit * 100) if obj.gigachat_tokens_limit > 0 else 0
+        color = 'red' if percentage >= 100 else ('orange' if percentage >= 80 else 'green')
+        return format_html(
+            '<span style="color: {};">{:,} / {:,} ({:.0f}%)</span>',
+            color,
+            obj.gigachat_tokens_used,
+            obj.gigachat_tokens_limit,
+            percentage
+        )
+    gigachat_tokens_display.short_description = 'GigaChat'
+    
+    def openai_tokens_display(self, obj):
+        """Отображение использования токенов OpenAI"""
+        if obj.openai_tokens_limit == -1:
+            return format_html(
+                '<span style="color: green;">∞ (использовано: {:,})</span>',
+                obj.openai_tokens_used
+            )
+        elif obj.openai_tokens_limit == 0:
+            return format_html('<span style="color: gray;">Недоступен</span>')
+        percentage = (obj.openai_tokens_used / obj.openai_tokens_limit * 100) if obj.openai_tokens_limit > 0 else 0
+        color = 'red' if percentage >= 100 else ('orange' if percentage >= 80 else 'green')
+        return format_html(
+            '<span style="color: {};">{:,} / {:,} ({:.0f}%)</span>',
+            color,
+            obj.openai_tokens_used,
+            obj.openai_tokens_limit,
+            percentage
+        )
+    openai_tokens_display.short_description = 'OpenAI'
+    
+    actions = ['deactivate_tokens', 'activate_tokens', 'renew_subscriptions', 'reset_token_usage']
+    
+    def renew_subscriptions(self, request, queryset):
+        """Действие для пополнения лимитов подписок"""
+        count = 0
+        for token in queryset:
+            if token.renew_subscription():
+                count += 1
+        self.message_user(request, f'Пополнено лимитов для {count} подписок')
+    renew_subscriptions.short_description = 'Пополнить лимиты (подписки)'
+    
+    def reset_token_usage(self, request, queryset):
+        """Действие для сброса использованных токенов (для тестирования)"""
+        count = queryset.update(
+            gigachat_tokens_used=0,
+            openai_tokens_used=0
+        )
+        self.message_user(request, f'Сброшено использование токенов для {count} записей')
+    reset_token_usage.short_description = 'Сбросить использование токенов'
+    
+    def changelist_view(self, request, extra_context=None):
+        """Добавляем статистику на страницу списка"""
+        response = super().changelist_view(request, extra_context)
+        
+        try:
+            from django.db.models import Sum, Q
+            from django.utils import timezone
+            
+            # Общая статистика
+            total_tokens = TemporaryAccessToken.objects.count()
+            active_tokens = TemporaryAccessToken.objects.filter(
+                is_active=True
+            ).filter(
+                Q(expires_at__gte=timezone.now()) | Q(expires_at__isnull=True)
+            ).count()
+            
+            # Статистика по типам
+            by_type = {}
+            for token_type, _ in TemporaryAccessToken.TOKEN_TYPES:
+                count = TemporaryAccessToken.objects.filter(
+                    token_type=token_type,
+                    is_active=True
+                ).filter(
+                    Q(expires_at__gte=timezone.now()) | Q(expires_at__isnull=True)
+                ).count()
+                by_type[token_type] = count
+            
+            # Общее использование токенов
+            total_gigachat_used = TemporaryAccessToken.objects.aggregate(
+                total=Sum('gigachat_tokens_used')
+            )['total'] or 0
+            total_openai_used = TemporaryAccessToken.objects.aggregate(
+                total=Sum('openai_tokens_used')
+            )['total'] or 0
+            
+            extra_context = extra_context or {}
+            extra_context['token_stats'] = {
+                'total_tokens': total_tokens,
+                'active_tokens': active_tokens,
+                'by_type': by_type,
+                'total_gigachat_used': total_gigachat_used,
+                'total_openai_used': total_openai_used
+            }
+            
+            if hasattr(response, 'context_data'):
+                response.context_data.update(extra_context)
+        except Exception as e:
+            print(f"Ошибка при расчете статистики токенов: {e}")
+        
+        return response
 
 
 @admin.register(GenerationTemplate)
@@ -396,6 +510,164 @@ class SubscriptionButtonClickAdmin(admin.ModelAdmin):
                 response.context_data.update(extra_context)
         except Exception as e:
             print(f"Ошибка при расчете статистики кликов: {e}")
+        
+        return response
+
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    """
+    Административная панель для мониторинга платежей
+    """
+    list_display = [
+        'telegram_user_display',
+        'amount_display',
+        'status_display',
+        'payment_system',
+        'created_at',
+        'paid_at',
+        'token_display'
+    ]
+    
+    list_filter = [
+        'status',
+        'payment_system',
+        'created_at',
+        'paid_at'
+    ]
+    
+    search_fields = [
+        'external_id',
+        'telegram_user_id',
+        'telegram_username',
+        'token__token'
+    ]
+    
+    readonly_fields = [
+        'id',
+        'external_id',
+        'telegram_user_id',
+        'telegram_username',
+        'amount',
+        'currency',
+        'status',
+        'payment_system',
+        'token',
+        'created_at',
+        'paid_at',
+        'payment_url',
+        'metadata',
+        'description'
+    ]
+    
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('id', 'external_id', 'status', 'payment_system')
+        }),
+        ('Telegram пользователь', {
+            'fields': ('telegram_user_id', 'telegram_username')
+        }),
+        ('Платёж', {
+            'fields': ('amount', 'currency', 'description')
+        }),
+        ('Связи', {
+            'fields': ('token',)
+        }),
+        ('Временные метки', {
+            'fields': ('created_at', 'paid_at')
+        }),
+        ('Техническая информация', {
+            'fields': ('payment_url', 'metadata'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def telegram_user_display(self, obj):
+        """Отображение Telegram пользователя"""
+        if obj.telegram_username:
+            return format_html(
+                '<span style="color: #2196F3;">@{}</span> <small>({})</small>',
+                obj.telegram_username,
+                obj.telegram_user_id
+            )
+        return format_html(
+            '<span style="color: #757575;">ID: {}</span>',
+            obj.telegram_user_id
+        )
+    telegram_user_display.short_description = 'Telegram'
+    
+    def amount_display(self, obj):
+        """Отображение суммы"""
+        return format_html(
+            '<span style="font-weight: bold;">{} {}</span>',
+            obj.amount,
+            obj.currency
+        )
+    amount_display.short_description = 'Сумма'
+    
+    def status_display(self, obj):
+        """Отображение статуса с цветом"""
+        colors = {
+            'pending': '#FF9800',
+            'succeeded': '#4CAF50',
+            'canceled': '#F44336',
+            'refunded': '#9C27B0'
+        }
+        icons = {
+            'pending': '⏳',
+            'succeeded': '✅',
+            'canceled': '❌',
+            'refunded': '💸'
+        }
+        color = colors.get(obj.status, '#757575')
+        icon = icons.get(obj.status, '•')
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{} {}</span>',
+            color,
+            icon,
+            obj.get_status_display()
+        )
+    status_display.short_description = 'Статус'
+    
+    def token_display(self, obj):
+        """Отображение связанного токена"""
+        if obj.token:
+            return format_html(
+                '<span style="color: #4CAF50;">🔑 {}</span>',
+                str(obj.token.token)[:8]
+            )
+        return format_html('<span style="color: #F44336;">-</span>')
+    token_display.short_description = 'Токен'
+    
+    def get_queryset(self, request):
+        """Оптимизация запросов"""
+        qs = super().get_queryset(request)
+        return qs.select_related('token')
+    
+    def changelist_view(self, request, extra_context=None):
+        """Добавляем статистику на страницу списка"""
+        response = super().changelist_view(request, extra_context)
+        
+        try:
+            # Статистика платежей
+            stats = Payment.get_statistics(days=30)
+            
+            # Общая выручка за всё время
+            from django.db.models import Sum
+            total_revenue_all = Payment.objects.filter(status='succeeded').aggregate(
+                total=Sum('amount')
+            )['total'] or 0
+            
+            extra_context = extra_context or {}
+            extra_context['payment_stats'] = {
+                'total_revenue_all': float(total_revenue_all),
+                'stats_30d': stats
+            }
+            
+            if hasattr(response, 'context_data'):
+                response.context_data.update(extra_context)
+        except Exception as e:
+            print(f"Ошибка при расчете статистики платежей: {e}")
         
         return response
 

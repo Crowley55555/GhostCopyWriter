@@ -39,6 +39,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'generator.middleware.TokenAccessMiddleware',  # Кастомный middleware для токенов
 ]
 
 ROOT_URLCONF = 'ghostwriter.urls'
@@ -120,11 +121,14 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
-# HTTPS settings (если используется SSL)
+# HTTPS settings (если используется SSL через внешний reverse proxy)
+# ВАЖНО: Если используете Django напрямую без Nginx, SSL нужно настраивать на уровне Docker/балансировщика
 if os.environ.get('USE_HTTPS', 'False').lower() == 'true':
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # Если Django за reverse proxy, добавьте заголовок
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # CSRF настройки для продакшена
 CSRF_TRUSTED_ORIGINS = [

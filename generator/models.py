@@ -6,6 +6,9 @@ Django модели для системы генерации контента
 - Generation: Сгенерированный контент (текст + изображения)
 - GenerationTemplate: Сохраненные шаблоны настроек генерации
 - TemporaryAccessToken: Временные токены доступа для анонимных пользователей
+- GigaChatTokenUsage: Отслеживание расхода токенов GigaChat
+- SubscriptionButtonClick: Отслеживание кликов по кнопке подписки
+- Payment: Платежи пользователей (ЮКасса, Тинькофф)
 """
 
 import uuid
@@ -16,18 +19,12 @@ from django.utils import timezone
 
 class UserProfile(models.Model):
     """
-    Расширенный профиль пользователя
+    Расширенный профиль пользователя (legacy, используется только для совместимости)
     
-    Хранит дополнительную информацию о пользователе:
-    личные данные, контакты, биографию, аватар
+    ВАЖНО: Регистрация пользователей отключена, используется система токенов.
+    Эта модель оставлена только для обратной совместимости с существующими данными.
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    first_name = models.CharField(max_length=50, blank=True, verbose_name="Имя")
-    last_name = models.CharField(max_length=50, blank=True, verbose_name="Фамилия")
-    city = models.CharField(max_length=100, blank=True, verbose_name="Город")
-    phone = models.CharField(max_length=30, blank=True, verbose_name="Телефон")
-    date_of_birth = models.DateField(blank=True, null=True, verbose_name="Дата рождения")
-    bio = models.TextField(blank=True, verbose_name="О себе")
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, verbose_name="Аватар")
     terms_accepted = models.BooleanField(default=False, verbose_name="Принял условия")
 
@@ -110,18 +107,25 @@ class TemporaryAccessToken(models.Model):
     Временные токены доступа для анонимных пользователей
     
     Позволяет пользователям получать доступ к приложению без регистрации
-    через временные токены с различными ограничениями по типу.
+    через временные токены с различными ограничениями по типу и лимитам токенов.
     
     Типы токенов:
-    - DEMO: 7 дней, безлимитные генерации
-    - MONTHLY: 30 дней, безлимитные генерации
-    - YEARLY: 365 дней, безлимитные генерации
+    - DEMO_FREE: Бесплатный старт (бессрочный, одноразовый)
+    - BASIC: Базовый (500₽/мес, подписка)
+    - PRO: Про (1500₽/мес, подписка)
+    - UNLIMITED: Безлимит (3500₽/мес, подписка)
+    - HIDDEN_14D: Скрытый 14 дней (только manual)
+    - HIDDEN_30D: Скрытый 30 дней (только manual)
+    - DEVELOPER: Разработчик (бессрочный, безлимит)
     """
     TOKEN_TYPES = (
-        ('DEMO', 'Демо (7 дней, безлимит)'),
-        ('MONTHLY', '30 дней'),
-        ('YEARLY', '365 дней'),
-        ('DEVELOPER', 'Разработчик (бессрочный, безлимит)'),
+        ('DEMO_FREE', 'Бесплатный старт'),
+        ('BASIC', 'Базовый (500₽/мес)'),
+        ('PRO', 'Про (1500₽/мес)'),
+        ('UNLIMITED', 'Безлимит (3500₽/мес)'),
+        ('HIDDEN_14D', 'Скрытый 14 дней'),
+        ('HIDDEN_30D', 'Скрытый 30 дней'),
+        ('DEVELOPER', 'Разработчик'),
     )
     
     # Уникальный токен (UUID) - без связи с User для анонимного доступа
@@ -135,7 +139,7 @@ class TemporaryAccessToken(models.Model):
     
     # Тип токена и время жизни
     token_type = models.CharField(
-        max_length=10, 
+        max_length=20, 
         choices=TOKEN_TYPES,
         verbose_name="Тип токена"
     )
@@ -144,33 +148,68 @@ class TemporaryAccessToken(models.Model):
         verbose_name="Дата создания"
     )
     expires_at = models.DateTimeField(
-        verbose_name="Дата истечения",
-        help_text="Токен становится недействительным после этой даты"
-    )
-    
-    # Лимиты генераций (не используется для DEMO, -1 = безлимит)
-    daily_generations_left = models.IntegerField(
-        default=-1,
-        verbose_name="Осталось генераций сегодня",
-        help_text="-1 = безлимит, 0+ = количество генераций (устаревшее поле)"
-    )
-    generations_reset_date = models.DateField(
-        null=True, 
+        null=True,
         blank=True,
-        verbose_name="Дата сброса счетчика",
-        help_text="Дата последнего сброса счетчика генераций"
+        verbose_name="Дата истечения",
+        help_text="Токен становится недействительным после этой даты (None = бессрочный)"
     )
     
-    # Статистика использования
+    # Лимиты токенов GigaChat
+    gigachat_tokens_limit = models.IntegerField(
+        default=-1,
+        verbose_name="Лимит токенов GigaChat",
+        help_text="-1 = безлимит, 0+ = количество токенов"
+    )
+    gigachat_tokens_used = models.IntegerField(
+        default=0,
+        verbose_name="Использовано токенов GigaChat",
+        help_text="Текущее использование токенов GigaChat"
+    )
+    
+    # Лимиты токенов OpenAI
+    openai_tokens_limit = models.IntegerField(
+        default=0,
+        verbose_name="Лимит токенов OpenAI",
+        help_text="-1 = безлимит, 0 = недоступен, 0+ = количество токенов"
+    )
+    openai_tokens_used = models.IntegerField(
+        default=0,
+        verbose_name="Использовано токенов OpenAI",
+        help_text="Текущее использование токенов OpenAI"
+    )
+    
+    # Подписки (для платных тарифов)
+    subscription_start = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата начала подписки",
+        help_text="Дата начала подписки (для автопополнения)"
+    )
+    next_renewal = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Следующее пополнение",
+        help_text="Дата следующего автоматического пополнения лимитов"
+    )
+    
+    # Статистика использования (legacy, оставляем для совместимости)
     total_used = models.IntegerField(
         default=0,
         verbose_name="Всего использований",
-        help_text="Общее количество генераций через этот токен"
+        help_text="Общее количество генераций через этот токен (legacy)"
     )
     is_active = models.BooleanField(
         default=True,
         verbose_name="Активен",
         help_text="Неактивные токены не могут быть использованы"
+    )
+    
+    # Telegram пользователь (для защиты от мультиаккаунтов)
+    telegram_user_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Telegram User ID",
+        help_text="ID пользователя в Telegram (для защиты от мультиаккаунтов)"
     )
     
     # Сессионные данные (технические, не ПДн)
@@ -192,6 +231,10 @@ class TemporaryAccessToken(models.Model):
         verbose_name_plural = "Временные токены доступа"
         ordering = ['-created_at']
         indexes = [
+            models.Index(fields=['telegram_user_id', 'token_type', 'is_active']),
+            models.Index(fields=['telegram_user_id', 'is_active']),
+        ]
+        indexes = [
             models.Index(fields=['token']),
             models.Index(fields=['is_active', 'expires_at']),
         ]
@@ -201,22 +244,109 @@ class TemporaryAccessToken(models.Model):
     
     def is_expired(self):
         """Проверяет, истек ли срок действия токена"""
-        # DEVELOPER токены никогда не истекают
-        if self.token_type == 'DEVELOPER':
+        # DEVELOPER и бессрочные токены никогда не истекают
+        if self.token_type == 'DEVELOPER' or self.expires_at is None:
             return False
         return timezone.now() > self.expires_at
     
-    def reset_daily_limit(self):
-        """Сбрасывает дневной лимит генераций для DEMO токенов"""
-        if self.token_type == 'DEMO':
-            today = timezone.now().date()
-            if self.generations_reset_date != today:
-                self.daily_generations_left = 5
-                self.generations_reset_date = today
-                self.save()
+    def can_use_gigachat(self):
+        """
+        Проверяет, может ли токен использовать GigaChat
+        
+        Returns:
+            tuple: (bool, str) - (может использовать, причина если нет)
+        """
+        if not self.is_active or self.is_expired():
+            return False, "Токен неактивен или истёк"
+        
+        # Безлимит
+        if self.gigachat_tokens_limit == -1:
+            return True, None
+        
+        # Проверяем лимит
+        if self.gigachat_tokens_used >= self.gigachat_tokens_limit:
+            return False, "Лимит токенов GigaChat исчерпан"
+        
+        return True, None
+    
+    def can_use_openai(self):
+        """
+        Проверяет, может ли токен использовать OpenAI
+        
+        Returns:
+            tuple: (bool, str) - (может использовать, причина если нет)
+        """
+        if not self.is_active or self.is_expired():
+            return False, "Токен неактивен или истёк"
+        
+        # OpenAI недоступен
+        if self.openai_tokens_limit == 0:
+            return False, "OpenAI недоступен для этого тарифа"
+        
+        # Безлимит
+        if self.openai_tokens_limit == -1:
+            return True, None
+        
+        # Проверяем лимит
+        if self.openai_tokens_used >= self.openai_tokens_limit:
+            return False, "Лимит токенов OpenAI исчерпан"
+        
+        return True, None
+    
+    def consume_gigachat_tokens(self, tokens_count):
+        """
+        Увеличивает счётчик использованных токенов GigaChat
+        
+        Args:
+            tokens_count (int): Количество использованных токенов
+        
+        Returns:
+            bool: True если успешно, False если превышен лимит
+        """
+        if self.gigachat_tokens_limit == -1:
+            # Безлимит - просто увеличиваем счётчик
+            self.gigachat_tokens_used += tokens_count
+            self.save()
+            return True
+        
+        if self.gigachat_tokens_used + tokens_count > self.gigachat_tokens_limit:
+            return False
+        
+        self.gigachat_tokens_used += tokens_count
+        self.save()
+        return True
+    
+    def consume_openai_tokens(self, tokens_count):
+        """
+        Увеличивает счётчик использованных токенов OpenAI
+        
+        Args:
+            tokens_count (int): Количество использованных токенов
+        
+        Returns:
+            bool: True если успешно, False если превышен лимит
+        """
+        if self.openai_tokens_limit == -1:
+            # Безлимит - просто увеличиваем счётчик
+            self.openai_tokens_used += tokens_count
+            self.save()
+            return True
+        
+        if self.openai_tokens_limit == 0:
+            return False
+        
+        if self.openai_tokens_used + tokens_count > self.openai_tokens_limit:
+            return False
+        
+        self.openai_tokens_used += tokens_count
+        self.save()
+        return True
     
     def can_generate(self):
-        """Проверяет, может ли токен использоваться для генерации"""
+        """
+        Проверяет, может ли токен использоваться для генерации
+        (legacy метод для обратной совместимости)
+        """
         if not self.is_active or self.is_expired():
             return False
         
@@ -224,29 +354,52 @@ class TemporaryAccessToken(models.Model):
         if self.token_type == 'DEVELOPER':
             return True
         
-        if self.token_type == 'DEMO':
-            self.reset_daily_limit()
-            return self.daily_generations_left > 0
+        # Проверяем хотя бы один из лимитов (GigaChat или OpenAI)
+        can_gc, _ = self.can_use_gigachat()
+        can_oa, _ = self.can_use_openai()
         
-        return True
+        # Если хотя бы один доступен - можно генерировать
+        return can_gc or can_oa
     
     def consume_generation(self, ip_address=None):
         """
-        Уменьшает счетчик генераций и обновляет статистику
+        Обновляет статистику использования (legacy метод)
         
         Args:
             ip_address (str): IP адрес пользователя для логирования
         """
-        # DEVELOPER токены не имеют лимитов
-        if self.token_type == 'DEMO':
-            if self.daily_generations_left > 0:
-                self.daily_generations_left -= 1
-        
         self.total_used += 1
         self.last_used = timezone.now()
         if ip_address:
             self.current_ip = ip_address
         self.save()
+    
+    def renew_subscription(self):
+        """
+        Пополняет лимиты токенов для подписки
+        
+        Вызывается автоматически при наступлении next_renewal
+        """
+        from .tariffs import get_tariff_config
+        
+        tariff = get_tariff_config(self.token_type)
+        if not tariff or not tariff.get('is_subscription'):
+            return False
+        
+        # Сбрасываем использованные токены
+        self.gigachat_tokens_used = 0
+        self.openai_tokens_used = 0
+        
+        # Обновляем дату следующего пополнения
+        if self.next_renewal:
+            from datetime import timedelta
+            self.next_renewal = self.next_renewal + timedelta(days=tariff['duration_days'])
+        else:
+            from datetime import timedelta
+            self.next_renewal = timezone.now() + timedelta(days=tariff['duration_days'])
+        
+        self.save()
+        return True
 
 
 class GigaChatTokenUsage(models.Model):
@@ -580,4 +733,194 @@ class SubscriptionButtonClick(models.Model):
             queryset = queryset.filter(page_name=page_name)
         
         return queryset.count()
+
+
+class Payment(models.Model):
+    """
+    Платежи пользователей
+    
+    Хранит информацию о платежах через ЮКасса и другие системы.
+    Связывает платёж с токеном доступа после успешной оплаты.
+    """
+    PAYMENT_STATUS = (
+        ('pending', 'Ожидает оплаты'),
+        ('succeeded', 'Оплачен'),
+        ('canceled', 'Отменён'),
+        ('refunded', 'Возврат'),
+    )
+    
+    PAYMENT_SYSTEMS = (
+        ('yookassa', 'ЮКасса'),
+        ('tinkoff', 'Тинькофф Касса'),
+    )
+    
+    # Идентификаторы
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+        verbose_name="ID платежа"
+    )
+    external_id = models.CharField(
+        max_length=255,
+        unique=True,
+        verbose_name="Внешний ID",
+        help_text="ID платежа в платёжной системе (ЮКасса/Тинькофф)"
+    )
+    
+    # Telegram пользователь
+    telegram_user_id = models.BigIntegerField(
+        verbose_name="Telegram User ID",
+        help_text="ID пользователя в Telegram"
+    )
+    telegram_username = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Telegram Username",
+        help_text="Username пользователя в Telegram (если есть)"
+    )
+    
+    # Данные о платеже
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name="Сумма",
+        help_text="Сумма платежа в рублях"
+    )
+    currency = models.CharField(
+        max_length=3,
+        default='RUB',
+        verbose_name="Валюта"
+    )
+    
+    # Статус и система
+    status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS,
+        default='pending',
+        verbose_name="Статус"
+    )
+    payment_system = models.CharField(
+        max_length=20,
+        choices=PAYMENT_SYSTEMS,
+        default='yookassa',
+        verbose_name="Платёжная система"
+    )
+    
+    # Связь с токеном (создаётся после успешной оплаты)
+    token = models.OneToOneField(
+        TemporaryAccessToken,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payment',
+        verbose_name="Выданный токен"
+    )
+    
+    # Описание (тариф)
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Описание",
+        help_text="Описание платежа (например, '30 дней подписки')"
+    )
+    
+    # Временные метки
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Создан"
+    )
+    paid_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Оплачен"
+    )
+    
+    # URL для оплаты (сохраняем для возможности повторного использования)
+    payment_url = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True,
+        verbose_name="Ссылка на оплату"
+    )
+    
+    # Метаданные (raw response от платёжной системы)
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Метаданные",
+        help_text="Дополнительные данные от платёжной системы"
+    )
+    
+    class Meta:
+        verbose_name = "Платёж"
+        verbose_name_plural = "Платежи"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['telegram_user_id']),
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['external_id']),
+        ]
+    
+    def __str__(self):
+        user_info = self.telegram_username or f"ID:{self.telegram_user_id}"
+        return f"{user_info} - {self.amount} {self.currency} - {self.get_status_display()}"
+    
+    @classmethod
+    def get_statistics(cls, days=30):
+        """
+        Получить статистику платежей за последние N дней
+        
+        Args:
+            days: Количество дней для анализа
+        
+        Returns:
+            dict: Статистика платежей
+        """
+        from datetime import timedelta
+        from django.db.models import Sum, Count
+        
+        cutoff_date = timezone.now() - timedelta(days=days)
+        
+        queryset = cls.objects.filter(created_at__gte=cutoff_date)
+        
+        total_payments = queryset.count()
+        successful_payments = queryset.filter(status='succeeded').count()
+        total_revenue = queryset.filter(status='succeeded').aggregate(
+            total=Sum('amount')
+        )['total'] or 0
+        
+        # По статусам
+        by_status = {}
+        for status_code, status_name in cls.PAYMENT_STATUS:
+            count = queryset.filter(status=status_code).count()
+            by_status[status_code] = {
+                'name': status_name,
+                'count': count
+            }
+        
+        # По дням
+        by_day = {}
+        for i in range(min(days, 30)):  # Максимум 30 дней в детализации
+            day = timezone.now().date() - timedelta(days=i)
+            count = queryset.filter(status='succeeded', paid_at__date=day).count()
+            revenue = queryset.filter(status='succeeded', paid_at__date=day).aggregate(
+                total=Sum('amount')
+            )['total'] or 0
+            by_day[day.isoformat()] = {
+                'count': count,
+                'revenue': float(revenue)
+            }
+        
+        return {
+            'total_payments': total_payments,
+            'successful_payments': successful_payments,
+            'total_revenue': float(total_revenue),
+            'conversion_rate': (successful_payments / total_payments * 100) if total_payments > 0 else 0,
+            'by_status': by_status,
+            'by_day': by_day,
+            'period_days': days
+        }
 

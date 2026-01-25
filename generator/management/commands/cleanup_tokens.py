@@ -129,20 +129,31 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('📊 Статистика активных токенов'))
         self.stdout.write('=' * 70)
         
+        from django.db.models import Q
+        
         active_tokens = TemporaryAccessToken.objects.filter(
-            is_active=True,
-            expires_at__gte=now
+            is_active=True
+        ).filter(
+            Q(expires_at__gte=now) | Q(expires_at__isnull=True)
         )
         
         total_active = active_tokens.count()
-        demo_count = active_tokens.filter(token_type='DEMO').count()
-        monthly_count = active_tokens.filter(token_type='MONTHLY').count()
-        yearly_count = active_tokens.filter(token_type='YEARLY').count()
+        demo_free_count = active_tokens.filter(token_type='DEMO_FREE').count()
+        basic_count = active_tokens.filter(token_type='BASIC').count()
+        pro_count = active_tokens.filter(token_type='PRO').count()
+        unlimited_count = active_tokens.filter(token_type='UNLIMITED').count()
+        hidden_14d_count = active_tokens.filter(token_type='HIDDEN_14D').count()
+        hidden_30d_count = active_tokens.filter(token_type='HIDDEN_30D').count()
+        developer_count = active_tokens.filter(token_type='DEVELOPER').count()
         
         self.stdout.write(f'\n✅ Всего активных токенов: {total_active}')
-        self.stdout.write(f'   - DEMO (5 дней): {demo_count}')
-        self.stdout.write(f'   - MONTHLY (30 дней): {monthly_count}')
-        self.stdout.write(f'   - YEARLY (365 дней): {yearly_count}')
+        self.stdout.write(f'   - DEMO_FREE (бессрочно): {demo_free_count}')
+        self.stdout.write(f'   - BASIC (30 дней): {basic_count}')
+        self.stdout.write(f'   - PRO (30 дней): {pro_count}')
+        self.stdout.write(f'   - UNLIMITED (30 дней): {unlimited_count}')
+        self.stdout.write(f'   - HIDDEN_14D (14 дней): {hidden_14d_count}')
+        self.stdout.write(f'   - HIDDEN_30D (30 дней): {hidden_30d_count}')
+        self.stdout.write(f'   - DEVELOPER (бессрочно): {developer_count}')
         
         # Статистика использования
         total_generations = TemporaryAccessToken.objects.aggregate(

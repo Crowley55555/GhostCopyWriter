@@ -6,58 +6,72 @@
             <div class="card shadow-lg border-0 fade-in">
                 <div class="card-header bg-warning bg-gradient text-dark text-center">
                     <div class="mb-3" style="font-size: 4rem;">⏰</div>
-                    <h2 class="mb-0">Дневной лимит исчерпан</h2>
+                    <h2 class="mb-0">Лимит токенов исчерпан</h2>
                 </div>
                 <div class="card-body p-4">
                     <p class="lead text-center mb-4">
-                        Вы достигли дневного лимита генераций для вашего токена.
+                        Вы исчерпали лимит токенов для вашего тарифа.
                     </p>
 
-                    {% if token_type == 'DEMO' %}
                     <div class="alert alert-secondary text-start mb-4">
                         <h5 class="alert-heading">📊 Статистика использования:</h5>
                         <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
-                            <span><strong>Тип токена:</strong></span>
-                            <span class="badge bg-info">{{ token_type }}</span>
+                            <span><strong>Тип тарифа:</strong></span>
+                            <span class="badge bg-info">{{ token_type|default:"Неизвестно" }}</span>
                         </div>
+                        {% if gigachat_tokens_limit %}
                         <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
-                            <span><strong>Генераций осталось сегодня:</strong></span>
-                            <span class="badge bg-danger">{{ daily_generations_left }} из 5</span>
+                            <span><strong>GigaChat токены:</strong></span>
+                            {% if gigachat_tokens_limit == -1 %}
+                            <span class="badge bg-success">Безлимит (использовано: {{ gigachat_tokens_used|default:0|floatformat:0 }})</span>
+                            {% else %}
+                            <span class="badge {% if gigachat_tokens_used >= gigachat_tokens_limit %}bg-danger{% else %}bg-warning{% endif %}">
+                                {{ gigachat_tokens_used|default:0|floatformat:0 }} / {{ gigachat_tokens_limit|floatformat:0 }}
+                            </span>
+                            {% endif %}
                         </div>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span><strong>Следующий сброс:</strong></span>
-                            <span><strong>Завтра в 00:00</strong></span>
+                        {% endif %}
+                        {% if openai_tokens_limit %}
+                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                            <span><strong>OpenAI токены:</strong></span>
+                            {% if openai_tokens_limit == -1 %}
+                            <span class="badge bg-success">Безлимит (использовано: {{ openai_tokens_used|default:0|floatformat:0 }})</span>
+                            {% elif openai_tokens_limit == 0 %}
+                            <span class="badge bg-secondary">Недоступен</span>
+                            {% else %}
+                            <span class="badge {% if openai_tokens_used >= openai_tokens_limit %}bg-danger{% else %}bg-warning{% endif %}">
+                                {{ openai_tokens_used|default:0|floatformat:0 }} / {{ openai_tokens_limit|floatformat:0 }}
+                            </span>
+                            {% endif %}
                         </div>
+                        {% endif %}
                     </div>
 
                     <div class="alert alert-info">
                         <h5 class="alert-heading">⏳ Что делать?</h5>
                         <ul class="mb-0">
-                            <li><strong>Подождите до завтра</strong> - лимит автоматически обновится</li>
-                            <li><strong>Обновите тариф</strong> - получите безлимитные генерации</li>
-                            <li><strong>Получите новый DEMO токен</strong> - еще 5 генераций</li>
+                            {% if token_type == 'DEMO_FREE' %}
+                            <li><strong>Выберите платный тариф</strong> - получите больше токенов</li>
+                            <li><strong>Докупите пакет токенов</strong> - для тарифа "Безлимит"</li>
+                            {% else %}
+                            <li><strong>Обновите подписку</strong> - лимиты обновятся автоматически</li>
+                            <li><strong>Докупите пакет токенов</strong> - для тарифа "Безлимит"</li>
+                            <li><strong>Выберите более высокий тариф</strong> - получите больше токенов</li>
+                            {% endif %}
                         </ul>
                     </div>
 
                     <div class="alert alert-primary text-white">
-                        <h5 class="alert-heading">🚀 Обновите тариф для безлимитного доступа!</h5>
+                        <h5 class="alert-heading">🚀 Обновите тариф для большего количества токенов!</h5>
                         <p class="mb-3">
-                            Получите полный доступ к генератору без ограничений:
+                            Доступные тарифы:
                         </p>
                         <ul class="mb-0">
-                            <li>📅 <strong>30 дней</strong> - безлимитные генерации</li>
-                            <li>📆 <strong>1 год</strong> - безлимитные генерации</li>
+                            <li>📊 <strong>Базовый</strong> - 50 000 GigaChat + 3 000 OpenAI (500₽/мес)</li>
+                            <li>⭐ <strong>Про</strong> - 200 000 GigaChat + 15 000 OpenAI (1 500₽/мес)</li>
+                            <li>🚀 <strong>Безлимит</strong> - ∞ GigaChat + 50 000 OpenAI (3 500₽/мес)</li>
                         </ul>
                     </div>
-                    {% else %}
-                    <div class="alert alert-warning">
-                        <h5 class="alert-heading">⚠️ Неожиданная ошибка</h5>
-                        <p class="mb-0">
-                            Для платных токенов не должно быть лимита генераций.
-                            Пожалуйста, обратитесь в поддержку через Telegram бота.
-                        </p>
-                    </div>
-                    {% endif %}
 
                     <div class="text-center mt-4">
                         <a href="https://t.me/Ghostcopywriterregistration_bot" class="btn btn-primary btn-lg me-2" target="_blank">
@@ -71,22 +85,32 @@
                     <div class="mt-4 text-center">
                         <h6>💡 Преимущества платных тарифов:</h6>
                         <div class="row mt-3">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="card mb-3">
                                     <div class="card-body text-center">
-                                        <h5>✅ Безлимитные генерации</h5>
+                                        <h5>📊 Больше токенов</h5>
                                         <p class="text-muted mb-0">
-                                            <small>Создавайте контент без ограничений</small>
+                                            <small>Больше генераций контента</small>
                                         </p>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="card mb-3">
                                     <div class="card-body text-center">
-                                        <h5>⚡ Приоритетная обработка</h5>
+                                        <h5>🤖 Доступ к OpenAI</h5>
                                         <p class="text-muted mb-0">
-                                            <small>Быстрая генерация без очередей</small>
+                                            <small>Генерация через OpenAI API</small>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card mb-3">
+                                    <div class="card-body text-center">
+                                        <h5>⚡ Автопополнение</h5>
+                                        <p class="text-muted mb-0">
+                                            <small>Лимиты обновляются автоматически</small>
                                         </p>
                                     </div>
                                 </div>
@@ -96,8 +120,8 @@
 
                     <div class="mt-4 text-center text-muted">
                         <small>
-                            📊 Следующий сброс лимита: <strong>завтра в 00:00</strong><br>
-                            🔒 Все ваши данные сохранены и будут доступны после обновления лимита
+                            🔒 Все ваши данные сохранены и будут доступны после обновления лимита<br>
+                            💡 Для подписок лимиты обновляются автоматически каждый месяц
                         </small>
                     </div>
                 </div>

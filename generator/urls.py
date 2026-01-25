@@ -12,9 +12,14 @@ urlpatterns = [
     path('regenerate-image/', views.regenerate_image, name='regenerate_image'),
     
     # API endpoints для создания токенов (используется ботом)
-    path('api/tokens/create/', views.api_create_token, name='api_create_token'),
-    path('api/tokens/<uuid:token>/', views.api_token_info, name='api_token_info'),
+    path('tokens/create/', views.api_create_token, name='api_create_token'),
+    path('tokens/<uuid:token>/', views.api_token_info, name='api_token_info'),
     
     # API endpoint для отслеживания кликов по кнопке подписки
-    path('api/track-subscription-click/', views.api_track_subscription_click, name='api_track_subscription_click'),
+    path('track-subscription-click/', views.api_track_subscription_click, name='api_track_subscription_click'),
+    
+    # API endpoints для платежей
+    path('payments/create/', views.api_create_payment, name='api_create_payment'),
+    path('payments/yookassa/webhook/', views.api_yookassa_webhook, name='api_yookassa_webhook'),
+    path('payments/<str:payment_id>/confirm/', views.api_confirm_payment, name='api_confirm_payment'),
 ] 

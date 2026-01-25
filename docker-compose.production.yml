@@ -3,9 +3,14 @@
 # =============================================================================
 # Развертывание на российском сервере: Django + Bot + PostgreSQL + Redis + Nginx
 # Flask микросервис деплоится отдельно на зарубежном сервере
+# Nginx работает как reverse proxy для Django (SSL, статика, безопасность)
 # 
-# Версия 2.0 - включает:
-# - Мониторинг токенов GigaChat
+# Версия 2.2 - включает:
+# - Защита от мультиаккаунтов (один DEMO токен на пользователя, одна активная подписка)
+# - Обновленные тарифы (новые лимиты токенов и цены)
+# - Отказ от ответственности в боте и веб-приложении
+# - Удаление legacy полей из базы данных
+# - Мониторинг токенов GigaChat и OpenAI
 # - Отслеживание кликов по кнопке подписки
 # - Privacy-compliant публичный бот
 # =============================================================================
@@ -25,7 +30,7 @@ services:
       dockerfile: Dockerfile
     container_name: ghostwriter-django-prod
     expose:
-      - "8000"
+      - "8000"  # Доступен только внутри Docker сети, Nginx проксирует запросы
     environment:
       - DJANGO_SETTINGS_MODULE=ghostwriter.production_settings
       - DEBUG=False
@@ -47,13 +52,18 @@ services:
       # Django Security
       - SECRET_KEY=${DJANGO_SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
-      - USE_HTTPS=true
+      - USE_HTTPS=true  # Nginx обрабатывает SSL, Django получает заголовки через proxy
       # Site URL
       - SITE_URL=${SITE_URL}
       # Telegram
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
+      # API для бота
+      - DJANGO_API_KEY=${DJANGO_API_KEY:-}
+      # Платежные системы
+      - YOOKASSA_SHOP_ID=${YOOKASSA_SHOP_ID:-}
+      - YOOKASSA_SECRET_KEY=${YOOKASSA_SECRET_KEY:-}
     volumes:
       - media_data:/app/media
       - static_data:/app/staticfiles
@@ -92,8 +102,21 @@ services:
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
+      - BOT_USERNAME=${BOT_USERNAME}
       - DJANGO_API_URL=http://django:8000
+      - DJANGO_API_KEY=${DJANGO_API_KEY:-}
       - SITE_URL=${SITE_URL}
+      # Реквизиты исполнителя (для оферты)
+      - EXECUTOR_FULL_NAME=${EXECUTOR_FULL_NAME}
+      - EXECUTOR_INN=${EXECUTOR_INN}
+      - EXECUTOR_PHONE=${EXECUTOR_PHONE}
+      - EXECUTOR_EMAIL=${EXECUTOR_EMAIL}
+      - EXECUTOR_TELEGRAM=${EXECUTOR_TELEGRAM}
+      - EXECUTOR_CITY=${EXECUTOR_CITY}
+      # Платежные системы
+      - YOOKASSA_SHOP_ID=${YOOKASSA_SHOP_ID:-}
+      - YOOKASSA_SECRET_KEY=${YOOKASSA_SECRET_KEY:-}
     volumes:
       - logs_data:/app/logs
     depends_on:
@@ -110,31 +133,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
-
-  # ===========================================================================
-  # Telegram Bot Public (бета-тестирование, privacy-compliant)
-  # НЕ собирает персональные данные, логи только в stdout
-  # ===========================================================================
-  bot-public:
-    build:
-      context: .
-      dockerfile: Dockerfile.bot-public
-    container_name: ghostwriter-bot-public-prod
-    environment:
-      - TELEGRAM_BOT_TOKEN_PUBLIC=${TELEGRAM_BOT_TOKEN_PUBLIC}
-      - OWNER_TELEGRAM=${OWNER_TELEGRAM:-@rain511}
-    # Без volumes — бот не сохраняет данные на диск (privacy-compliant)
-    networks:
-      - ghostwriter-network
-    restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 128M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
 
   # ===========================================================================
   # PostgreSQL Database
@@ -197,6 +195,14 @@ services:
 
   # ===========================================================================
   # Nginx Reverse Proxy
+  # ===========================================================================
+  # Nginx нужен для:
+  # 1. SSL/TLS терминация (HTTPS) - обработка SSL сертификатов
+  # 2. Статические файлы - эффективная раздача CSS/JS/изображений без нагрузки на Django
+  # 3. Rate limiting - защита от DDoS и злоупотреблений
+  # 4. Gzip сжатие - уменьшение размера ответов
+  # 5. Кеширование - ускорение загрузки статики
+  # 6. Безопасность - дополнительные заголовки безопасности
   # ===========================================================================
   nginx:
     image: nginx:alpine

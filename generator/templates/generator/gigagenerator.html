@@ -30,7 +30,32 @@
             <div class="card shadow-lg border-0 fade-in" style="max-width: 1100px; margin-left: auto; margin-right: auto; overflow: visible;">
                 <div class="card-header bg-primary bg-gradient text-white text-center d-flex justify-content-between align-items-center">
                     <h3 class="mb-0"><i class="bi bi-magic me-2"></i>Генератор постов</h3>
-                    <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <!-- Виджет с информацией о токенах -->
+                        <div class="token-info-widget bg-white bg-opacity-10 rounded px-3 py-2" style="min-width: 200px;" id="tokenInfoWidget">
+                            <div class="d-flex align-items-center justify-content-between gap-2">
+                                <div class="text-start">
+                                    <div class="small" id="gigachatTokensInfo">
+                                        <i class="bi bi-lightning-charge me-1"></i>
+                                        {% if gigachat_tokens_limit == -1 %}
+                                        <span>GigaChat: ∞</span>
+                                        {% else %}
+                                        <span>GigaChat: <span id="gigachatUsed">{{ gigachat_tokens_used|default:0|floatformat:0 }}</span> / <span id="gigachatLimit">{{ gigachat_tokens_limit|floatformat:0 }}</span></span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small" id="openaiTokensInfo">
+                                        <i class="bi bi-robot me-1"></i>
+                                        {% if openai_tokens_limit == -1 %}
+                                        <span>OpenAI: ∞</span>
+                                        {% elif openai_tokens_limit == 0 %}
+                                        <span>OpenAI: —</span>
+                                        {% else %}
+                                        <span>OpenAI: <span id="openaiUsed">{{ openai_tokens_used|default:0|floatformat:0 }}</span> / <span id="openaiLimit">{{ openai_tokens_limit|floatformat:0 }}</span></span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <button class="btn btn-outline-light btn-sm me-2" id="openSaveTemplateModal" title="Сохранить как шаблон"><i class="bi bi-bookmark-plus"></i></button>
                         <!-- Меню шаблонов в виде карточки -->
                         <div id="templateCard" class="shadow rounded p-3 mb-3" style="min-width:260px; max-width:350px; width:100%; position: absolute; top:60px; right:30px; z-index:1050; display:none; box-shadow:0 4px 24px rgba(0,0,0,0.12);">
@@ -283,16 +308,37 @@
   <div class="btn-group w-100" role="group" aria-label="Выбор генератора">
     <input type="radio" class="btn-check" name="generator_type" id="genTypeGigachat" value="gigachat" autocomplete="off" checked>
     <label class="btn btn-outline-primary" for="genTypeGigachat" id="labelGigachat"><i class="bi bi-robot"></i> Gigachat</label>
-    <input type="radio" class="btn-check" name="generator_type" id="genTypeOpenAI" value="openai" autocomplete="off" {% if is_demo %}disabled{% endif %}>
-    <label class="btn btn-outline-success {% if is_demo %}opacity-50{% endif %}" for="genTypeOpenAI" id="labelOpenAI" {% if is_demo %}style="cursor: not-allowed;"{% endif %}><i class="bi bi-lightning-charge"></i> OpenAI + DALL-E{% if is_demo %} <span class="badge bg-warning text-dark ms-1">DEMO</span>{% endif %}</label>
+    {% if openai_tokens_limit == 0 %}
+    <input type="radio" class="btn-check" name="generator_type" id="genTypeOpenAI" value="openai" autocomplete="off" disabled>
+    <label class="btn btn-outline-success opacity-50" for="genTypeOpenAI" id="labelOpenAI" style="cursor: not-allowed;"><i class="bi bi-lightning-charge"></i> OpenAI + DALL-E <span class="badge bg-secondary ms-1">Недоступен</span></label>
+    {% else %}
+    <input type="radio" class="btn-check" name="generator_type" id="genTypeOpenAI" value="openai" autocomplete="off">
+    <label class="btn btn-outline-success" for="genTypeOpenAI" id="labelOpenAI"><i class="bi bi-lightning-charge"></i> OpenAI + DALL-E</label>
+    {% endif %}
   </div>
-  {% if is_demo %}
+  {% if openai_tokens_limit == 0 %}
   <div class="alert alert-warning mt-2 py-2 px-3 mb-0 d-flex align-items-center" role="alert">
     <i class="bi bi-info-circle-fill me-2"></i>
-    <small><strong>Выбор OpenAI + DALL-E недоступен в демо режиме.</strong> Пожалуйста, используйте Gigachat или оформите полный доступ через Telegram бота.</small>
+    <small><strong>OpenAI + DALL-E недоступен для вашего тарифа.</strong> Выберите платный тариф для доступа к OpenAI или используйте GigaChat.</small>
+  </div>
+  {% elif openai_tokens_limit > 0 and openai_tokens_used >= openai_tokens_limit %}
+  <div class="alert alert-danger mt-2 py-2 px-3 mb-0 d-flex align-items-center" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <small><strong>Лимит OpenAI токенов исчерпан.</strong> Вы можете продолжать использовать GigaChat или обновить тариф.</small>
   </div>
   {% endif %}
 </div>
+                        </div>
+                        <div class="mt-3 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="generate_image" id="generateImageCheckbox">
+                                <label class="form-check-label" for="generateImageCheckbox">
+                                    <i class="bi bi-image me-1"></i>Сгенерировать изображение вместе с текстом
+                                </label>
+                                <small class="form-text text-muted d-block mt-1">
+                                    Если не выбран, изображение можно будет сгенерировать отдельно после создания текста
+                                </small>
+                            </div>
                         </div>
                         <div class="d-flex gap-2 mt-4">
                             <button type="submit" class="btn btn-primary" id="generateBtn"><span id="generateBtnContent"><i class="bi bi-magic me-2"></i>Сгенерировать</span></button>
@@ -451,12 +497,35 @@ form.addEventListener('submit', function(e) {
         btnContent.style.display = '';
         statusBlock.style.display = 'none';
         if (data.success) {
+            // Обновляем информацию о токенах, если она пришла в ответе
+            if (data.gigachat_tokens_used !== undefined) {
+                const gigachatUsed = document.getElementById('gigachatUsed');
+                if (gigachatUsed) {
+                    gigachatUsed.textContent = Math.round(data.gigachat_tokens_used).toLocaleString('ru-RU');
+                }
+            }
+            if (data.openai_tokens_used !== undefined) {
+                const openaiUsed = document.getElementById('openaiUsed');
+                if (openaiUsed) {
+                    openaiUsed.textContent = Math.round(data.openai_tokens_used).toLocaleString('ru-RU');
+                }
+            }
+            
             showToast('Текст успешно сгенерирован!', 'success');
-            showToast('Генерация промпта для изображения...', 'info');
-            setTimeout(() => showToast('Генерация изображения...', 'info'), 800);
+            
+            // Если изображение должно генерироваться, показываем уведомления
+            if (data.generate_image_flag) {
+                showToast('Генерация промпта для изображения...', 'info');
+                setTimeout(() => showToast('Генерация изображения...', 'info'), 800);
+            }
+            
             let html = '<div class="row mt-5">';
             if (data.result) {
-                html += `<div class=\"col-md-6 mb-4\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-success bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-file-text me-2\"></i>Сгенерированный текст</h5></div><div class=\"card-body\"><div class=\"auto-resize-textarea\" style=\"white-space: pre-line;\">${data.result}</div><button id=\"regenTextBtn\" class=\"btn btn-outline-primary mt-3 w-100\" type=\"button\">Перегенерировать текст</button></div></div></div>`;
+                // Добавляем кнопку для генерации изображения, если оно не было сгенерировано
+                const generateImageBtn = data.generate_image_flag ? '' : 
+                    `<button id=\"generateImageBtn\" class=\"btn btn-outline-info mt-3 w-100\" type=\"button\"><i class=\"bi bi-image me-2\"></i>Сгенерировать изображение</button>`;
+                
+                html += `<div class=\"col-md-${data.image_url ? '6' : '12'} mb-4\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-success bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-file-text me-2\"></i>Сгенерированный текст</h5></div><div class=\"card-body\"><div class=\"auto-resize-textarea\" style=\"white-space: pre-line;\">${data.result}</div><button id=\"regenTextBtn\" class=\"btn btn-outline-primary mt-3 w-100\" type=\"button\">Перегенерировать текст</button>${generateImageBtn}</div></div></div>`;
             }
             if (data.image_url) {
                 setTimeout(() => showToast('Изображение успешно сгенерировано!', 'success'), 1800);
@@ -500,8 +569,83 @@ function showToast(msg, type='info') {
     }
 }
 
-// --- Перегенерация текста и изображения ---
+// --- Генерация изображения на основе текста ---
 document.addEventListener('click', function(e) {
+    if (e.target && (e.target.id === 'generateImageBtn' || e.target.closest('#generateImageBtn'))) {
+        const btn = e.target.id === 'generateImageBtn' ? e.target : e.target.closest('#generateImageBtn');
+        const resultText = document.querySelector('.auto-resize-textarea') || document.getElementById('result');
+        const topicInput = document.querySelector('[name="topic"]');
+        const topic = topicInput ? topicInput.value : '';
+        
+        if (!resultText || !resultText.textContent.trim()) {
+            showToast('Сначала сгенерируйте текст', 'warning');
+            return;
+        }
+        
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-arrow-clockwise me-2 icon-loading"></i>Генерация изображения...';
+        showToast('Генерация промпта для изображения...', 'info');
+        
+        const formData = new FormData();
+        formData.append('topic', topic);
+        formData.append('result_text', resultText.textContent.trim());
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        fetch('/generate-image-from-text/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            btn.disabled = false;
+            if (data.success) {
+                // Обновляем информацию о токенах
+                if (data.gigachat_tokens_used !== undefined) {
+                    const gigachatUsed = document.getElementById('gigachatUsed');
+                    if (gigachatUsed) gigachatUsed.textContent = Math.round(data.gigachat_tokens_used).toLocaleString('ru-RU');
+                }
+                if (data.openai_tokens_used !== undefined) {
+                    const openaiUsed = document.getElementById('openaiUsed');
+                    if (openaiUsed) openaiUsed.textContent = Math.round(data.openai_tokens_used).toLocaleString('ru-RU');
+                }
+                
+                showToast('Изображение успешно сгенерировано!', 'success');
+                
+                // Удаляем кнопку генерации изображения
+                btn.remove();
+                
+                // Добавляем изображение в результат
+                const resultBlock = document.getElementById('generationResult');
+                if (resultBlock && data.image_url) {
+                    const textCard = resultBlock.querySelector('.col-md-12');
+                    if (textCard) {
+                        textCard.className = 'col-md-6 mb-4';
+                    }
+                    
+                    const imageHtml = `<div class="col-md-6 mb-4 text-center"><div class="card shadow border-0 h-100"><div class="card-header bg-info bg-gradient text-white"><h5 class="mb-0"><i class="bi bi-image me-2"></i>Сгенерированное изображение</h5></div><div class="card-body"><img src="${data.image_url}" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image" style="max-height: 320px; object-fit: contain;"><button id="regenImageBtn" class="btn btn-outline-info mt-3 w-100" type="button">Перегенерировать изображение</button></div></div></div>`;
+                    
+                    if (resultBlock.querySelector('.row')) {
+                        resultBlock.querySelector('.row').innerHTML += imageHtml;
+                    } else {
+                        resultBlock.innerHTML = `<div class="row mt-5">${resultBlock.innerHTML}${imageHtml}</div>`;
+                    }
+                }
+            } else {
+                btn.innerHTML = '<i class="bi bi-image me-2"></i>Сгенерировать изображение';
+                showToast(data.error || 'Ошибка при генерации изображения', 'danger');
+            }
+        })
+        .catch(error => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-image me-2"></i>Сгенерировать изображение';
+            console.error('Ошибка при генерации изображения:', error);
+            showToast('Ошибка при генерации изображения', 'danger');
+        });
+    }
+    
     if (e.target && e.target.id === 'regenTextBtn') {
         const topicInput = document.querySelector('[name="topic"]');
         const topic = topicInput ? topicInput.value : '';
@@ -524,6 +668,16 @@ document.addEventListener('click', function(e) {
         .then(data => {
             e.target.disabled = false;
             if (data.success) {
+                // Обновляем информацию о токенах
+                if (data.gigachat_tokens_used !== undefined) {
+                    const gigachatUsed = document.getElementById('gigachatUsed');
+                    if (gigachatUsed) gigachatUsed.textContent = Math.round(data.gigachat_tokens_used).toLocaleString('ru-RU');
+                }
+                if (data.openai_tokens_used !== undefined) {
+                    const openaiUsed = document.getElementById('openaiUsed');
+                    if (openaiUsed) openaiUsed.textContent = Math.round(data.openai_tokens_used).toLocaleString('ru-RU');
+                }
+                
                 showToast('Текст успешно перегенерирован!', 'success');
                 // Обновить только текстовую карточку
                 const textCard = e.target.closest('.card-body');
@@ -561,6 +715,16 @@ document.addEventListener('click', function(e) {
         .then(data => {
             e.target.disabled = false;
             if (data.success) {
+                // Обновляем информацию о токенах
+                if (data.gigachat_tokens_used !== undefined) {
+                    const gigachatUsed = document.getElementById('gigachatUsed');
+                    if (gigachatUsed) gigachatUsed.textContent = Math.round(data.gigachat_tokens_used).toLocaleString('ru-RU');
+                }
+                if (data.openai_tokens_used !== undefined) {
+                    const openaiUsed = document.getElementById('openaiUsed');
+                    if (openaiUsed) openaiUsed.textContent = Math.round(data.openai_tokens_used).toLocaleString('ru-RU');
+                }
+                
                 showToast('Изображение успешно перегенерировано!', 'success');
                 // Обновить только картинку
                 const imageCard = e.target.closest('.card-body');
@@ -821,8 +985,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Инициализация подсветки выбранного генератора
     updateGeneratorSelection();
     
-    // Блокировка OpenAI для DEMO токенов
-    {% if is_demo %}
+    // Блокировка OpenAI для токенов без доступа
+    {% if openai_tokens_limit == 0 %}
     const openaiLabel = document.getElementById('labelOpenAI');
     const openaiRadio = document.getElementById('genTypeOpenAI');
     if (openaiLabel && openaiRadio) {
@@ -830,8 +994,18 @@ document.addEventListener('DOMContentLoaded', function() {
             if (openaiRadio.disabled) {
                 e.preventDefault();
                 e.stopPropagation();
-                showToast('Выбор OpenAI + DALL-E недоступен в демо режиме. Пожалуйста, используйте Gigachat.', 'warning');
+                showToast('OpenAI + DALL-E недоступен для вашего тарифа. Выберите платный тариф или используйте GigaChat.', 'warning');
             }
+        });
+    }
+    {% elif openai_tokens_limit > 0 and openai_tokens_used >= openai_tokens_limit %}
+    const openaiLabel = document.getElementById('labelOpenAI');
+    const openaiRadio = document.getElementById('genTypeOpenAI');
+    if (openaiLabel && openaiRadio) {
+        openaiLabel.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            showToast('Лимит OpenAI токенов исчерпан. Вы можете использовать GigaChat или обновить тариф.', 'danger');
         });
     }
     {% endif %}

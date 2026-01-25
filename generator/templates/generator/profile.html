@@ -23,13 +23,12 @@
       <div class="card shadow-lg border-0 p-4 mb-3">
         <h3 class="mb-3"><i class="bi bi-person-circle me-2"></i>Профиль пользователя</h3>
         <div class="mb-2"><strong>Никнейм:</strong> <span class="text-primary">{{ user_profile.user.username }}</span></div>
-        <div class="mb-2"><strong>Email:</strong> <span class="text-muted">{{ user_profile.user.email }}</span></div>
-        <div class="mb-2"><strong>Имя:</strong> <span>{{ user_profile.first_name|default:'—' }}</span></div>
-        <div class="mb-2"><strong>Фамилия:</strong> <span>{{ user_profile.last_name|default:'—' }}</span></div>
-        <div class="mb-2"><strong>Дата рождения:</strong> <span>{{ user_profile.date_of_birth|date:'d.m.Y'|default:'—' }}</span></div>
-        <div class="mb-2"><strong>Город:</strong> <span>{{ user_profile.city|default:'—' }}</span></div>
-        <div class="mb-2"><strong>Телефон:</strong> <span>{{ user_profile.phone|default:'—' }}</span></div>
-        <div class="mb-2"><strong>О себе:</strong> <span>{{ user_profile.bio|default:'—' }}</span></div>
+        {% if user_profile.avatar %}
+        <div class="mb-2"><strong>Аватар:</strong> <img src="{{ user_profile.avatar.url }}" alt="Аватар" style="max-width: 100px; max-height: 100px;"></div>
+        {% endif %}
+        <div class="alert alert-info mt-3">
+          <small><i class="bi bi-info-circle me-1"></i>Регистрация пользователей отключена. Система работает через токены доступа.</small>
+        </div>
       </div>
     {% else %}
     <!-- Информация о токене (система токенов) -->
@@ -42,13 +41,61 @@
           <div class="mb-2"><strong>Токен:</strong> <code class="text-muted">{{ token.token }}</code></div>
           <div class="mb-2"><strong>Создан:</strong> <span>{{ token.created_at|date:'d.m.Y H:i' }}</span></div>
           <div class="mb-2"><strong>Истекает:</strong> 
-            {% if token.token_type == 'DEVELOPER' %}
-              <span class="badge bg-success">Бессрочный</span>
-            {% else %}
+            {% if token.expires_at %}
               <span>{{ token.expires_at|date:'d.m.Y H:i' }}</span>
+            {% else %}
+              <span class="badge bg-success">Бессрочный</span>
             {% endif %}
           </div>
-          <div class="mb-2"><strong>Лимит генераций:</strong> <span class="badge bg-success">Безлимит</span></div>
+          
+          <div class="mb-3 mt-3 p-3 bg-light rounded">
+            <h6 class="mb-3"><i class="bi bi-graph-up me-2"></i>Лимиты токенов:</h6>
+            
+            <div class="mb-2">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span><strong>GigaChat:</strong></span>
+                {% if gigachat_tokens_limit == -1 %}
+                  <span class="badge bg-success">Безлимит (использовано: {{ gigachat_tokens_used|default:0|floatformat:0 }})</span>
+                {% else %}
+                  <span class="badge {% if gigachat_tokens_used >= gigachat_tokens_limit %}bg-danger{% else %}bg-info{% endif %}">
+                    {{ gigachat_tokens_used|default:0|floatformat:0 }} / {{ gigachat_tokens_limit|floatformat:0 }}
+                  </span>
+                {% endif %}
+              </div>
+              {% if gigachat_tokens_limit != -1 %}
+              <div class="progress mb-2" style="height: 8px;">
+                {% widthratio gigachat_tokens_used gigachat_tokens_limit 100 as percentage %}
+                <div class="progress-bar {% if percentage >= 100 %}bg-danger{% elif percentage >= 80 %}bg-warning{% else %}bg-info{% endif %}" 
+                     role="progressbar" style="width: {{ percentage }}%" 
+                     aria-valuenow="{{ percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+              {% endif %}
+            </div>
+            
+            <div class="mb-2">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span><strong>OpenAI:</strong></span>
+                {% if openai_tokens_limit == -1 %}
+                  <span class="badge bg-success">Безлимит (использовано: {{ openai_tokens_used|default:0|floatformat:0 }})</span>
+                {% elif openai_tokens_limit == 0 %}
+                  <span class="badge bg-secondary">Недоступен</span>
+                {% else %}
+                  <span class="badge {% if openai_tokens_used >= openai_tokens_limit %}bg-danger{% else %}bg-info{% endif %}">
+                    {{ openai_tokens_used|default:0|floatformat:0 }} / {{ openai_tokens_limit|floatformat:0 }}
+                  </span>
+                {% endif %}
+              </div>
+              {% if openai_tokens_limit > 0 %}
+              <div class="progress mb-2" style="height: 8px;">
+                {% widthratio openai_tokens_used openai_tokens_limit 100 as percentage %}
+                <div class="progress-bar {% if percentage >= 100 %}bg-danger{% elif percentage >= 80 %}bg-warning{% else %}bg-info{% endif %}" 
+                     role="progressbar" style="width: {{ percentage }}%" 
+                     aria-valuenow="{{ percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          
           <div class="mb-2"><strong>Всего использовано:</strong> <span>{{ token.total_used }}</span></div>
           {% if token.last_used %}
           <div class="mb-2"><strong>Последнее использование:</strong> <span>{{ token.last_used|date:'d.m.Y H:i' }}</span></div>
