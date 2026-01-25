@@ -33,8 +33,12 @@ def generate_image_prompt_from_text(text, form_data):
     
     try:
         print("INFO: Генерируем промпт для изображения через OpenAI...")
+        # Получаем модель из переменной окружения или используем GPT-4o-mini по умолчанию
+        model = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+        print(f"Using OpenAI model: {model}")
+        
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=model,
             messages=[
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": user_prompt}

@@ -500,8 +500,8 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 GENERATOR_ENCRYPTION_KEY=тот-же-fernet-key-что-на-django
 
 # Модели OpenAI
-OPENAI_MODEL=gpt-4
-DALLE_MODEL=dall-e-3
+OPENAI_MODEL=gpt-4o-minio-mini  # Модель для генерации текста и промптов
+DALLE_MODEL=dall-e-3      # Модель для генерации изображений
 
 # Flask настройки
 FLASK_ENV=production

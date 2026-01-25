@@ -2,6 +2,7 @@
 # GHOSTWRITER - Docker Compose для Flask микросервиса
 # =============================================================================
 # Развертывание на ЗАРУБЕЖНОМ сервере (OpenAI API)
+# Версия 2.2 - GPT-4o-mini для генерации текста и промптов
 # =============================================================================
 # Запуск: docker-compose -f docker-compose.flask.yml up -d
 # Логи: docker-compose -f docker-compose.flask.yml logs -f
@@ -22,7 +23,7 @@ services:
       - FLASK_ENV=production
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GENERATOR_ENCRYPTION_KEY=${GENERATOR_ENCRYPTION_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - DALLE_MODEL=${DALLE_MODEL:-dall-e-3}
     volumes:
       - flask_logs:/app/logs

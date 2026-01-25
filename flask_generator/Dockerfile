@@ -8,7 +8,8 @@ FROM python:3.11-slim
 
 # Метаданные
 LABEL maintainer="Ghostwriter Team"
-LABEL description="Ghostwriter Flask AI Generator (OpenAI)"
+LABEL version="2.2"
+LABEL description="Ghostwriter Flask AI Generator - GPT-4o-mini + DALL-E"
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \
