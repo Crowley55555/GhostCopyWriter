@@ -170,7 +170,7 @@ original_data = json.loads(decrypted.decode())
 ## 🤖 AI Интеграции
 
 ### OpenAI GPT (Генерация текста)
-- **Модели**: GPT-3.5-turbo, GPT-4 (настраивается)
+- **Модели**: GPT-4o-mini (по умолчанию), настраивается через OPENAI_MODEL
 - **Функции**: Создание постов, адаптация под платформы, SEO-оптимизация
 - **Fallback**: Mock ответы при отсутствии API ключа
 
@@ -201,7 +201,7 @@ GENERATOR_ENCRYPTION_KEY=base64_key      # Ключ шифрования
 # Опциональные
 FLASK_ENV=development                    # Режим Flask
 FLASK_DEBUG=True                         # Отладка
-OPENAI_MODEL=gpt-3.5-turbo              # Модель GPT
+OPENAI_MODEL=gpt-4o-mini               # Модель GPT (по умолчанию)
 DALLE_MODEL=dall-e-3                     # Модель DALL-E
 REQUEST_TIMEOUT=30                       # Таймаут запросов
 ```
@@ -210,7 +210,7 @@ REQUEST_TIMEOUT=30                       # Таймаут запросов
 ```python
 # В text_gen.py можно настроить параметры GPT
 response = openai_client.chat.completions.create(
-    model="gpt-3.5-turbo",
+    model="gpt-4o-mini",  # или через OPENAI_MODEL
     messages=[...],
     max_tokens=1000,
     temperature=0.7,
