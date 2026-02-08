@@ -62,8 +62,9 @@ def consume_generation(view_func):
             if not can_gc and not can_oa:
                 return redirect('limit_exceeded_page')
             
-            # Если только OpenAI исчерпан, но GigaChat доступен - показываем специальную страницу
-            if not can_oa and can_gc:
+            # Редирект на openai_limit_exceeded только если OpenAI был в тарифе, но лимит исчерпан.
+            # Для скрытых токенов (openai_tokens_limit == 0) не редиректим — страница генератора с заглушенным OpenAI.
+            if token.openai_tokens_limit > 0 and not can_oa and can_gc:
                 return redirect('openai_limit_exceeded_page')
             
             # Сохраняем токен в request для использования в views
