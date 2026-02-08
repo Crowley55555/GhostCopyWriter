@@ -515,6 +515,7 @@ def generate_image_from_text(request):
                             f.write(image_bytes)
                         
                         image_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
+                        print(f"Изображение сохранено: {filename}, URL: {image_url[:80]}...")
                         
                         # Обновляем изображение в существующей записи
                         update_generation_image(request, topic or result_text[:50], image_url)

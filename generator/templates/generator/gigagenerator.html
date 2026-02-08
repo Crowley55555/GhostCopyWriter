@@ -551,7 +551,11 @@ form.addEventListener('submit', function(e) {
                     headers: { 'X-Requested-With': 'XMLHttpRequest' },
                     body: imgForm
                 }, IMAGE_FETCH_TIMEOUT)
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    return r.text().then(function(text) {
+                        try { var j = JSON.parse(text); j._status = r.status; j._ok = r.ok; return j; } catch (e) { return { success: false, error: r.status === 504 ? 'Таймаут сервера (504). Генерация изображения заняла слишком много времени.' : r.status === 502 ? 'Ошибка сервера (502). Попробуйте позже.' : r.status >= 500 ? 'Ошибка сервера (' + r.status + ').' : (text && text.length < 200 ? text : 'Ответ сервера не распознан.'), _status: r.status, _ok: false }; }
+                    });
+                })
                 .then(function(imgData) {
                     statusBlock.style.display = 'none';
                     if (imgData.success && imgData.image_url) {
@@ -578,19 +582,21 @@ form.addEventListener('submit', function(e) {
                             else body.appendChild(img);
                         }
                     } else {
-                        showToast(imgData.error || 'Ошибка генерации изображения', 'danger');
+                        var errMsg = imgData.error || (imgData._status === 504 ? 'Таймаут. GigaChat долго генерирует — попробуйте ещё раз.' : 'Ошибка генерации изображения');
+                        showToast(errMsg, 'danger');
                         var body = document.getElementById('generatedImagesCardBody');
                         if (body && body.querySelector('.py-5')) {
-                            body.querySelector('.py-5').innerHTML = '<div class="alert alert-danger mb-0">' + (imgData.error || 'Ошибка') + '</div>';
+                            body.querySelector('.py-5').innerHTML = '<div class="alert alert-danger mb-0">' + (errMsg.replace(/</g, '&lt;')) + '</div>';
                         }
                     }
                 })
-                .catch(function() {
+                .catch(function(err) {
                     statusBlock.style.display = 'none';
-                    showToast('Таймаут или ошибка при генерации изображения', 'danger');
+                    var msg = (err && err.name === 'AbortError') ? 'Превышено время ожидания (5 мин). GigaChat перегружен — попробуйте позже.' : 'Сеть или сервер недоступны. Проверьте соединение.';
+                    showToast(msg, 'danger');
                     var body = document.getElementById('generatedImagesCardBody');
                     if (body && body.querySelector('.py-5')) {
-                        body.querySelector('.py-5').innerHTML = '<div class="alert alert-danger mb-0">Не удалось сгенерировать изображение. Попробуйте нажать «Сгенерировать изображение» позже.</div>';
+                        body.querySelector('.py-5').innerHTML = '<div class="alert alert-danger mb-0">' + msg + '</div>';
                     }
                     var rb = body && body.querySelector('#regenImageBtn');
                     if (rb) rb.classList.remove('d-none');
