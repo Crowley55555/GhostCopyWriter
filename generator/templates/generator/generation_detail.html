@@ -13,7 +13,8 @@
           <span class="badge bg-info text-dark">{{ gen.platform }}</span>
         </div>
         {% if gen.image_url %}
-          {% with images=gen.image_url|split:"|" %}
+          {% with image_url_abs=gen.image_url|media_urls_absolute:request %}
+          {% with images=image_url_abs|split:"|" %}
             {% if images|length > 1 %}
               <div class="image-gallery">
                 <div class="mb-3">
@@ -32,13 +33,14 @@
                 {% endfor %}
               </div>
             {% else %}
-              <img src="{{ gen.image_url }}" alt="AI image" class="card-img-top generated-image" id="genDetailImage" style="max-height: 320px; object-fit: contain; background: #f8f9fa;">
+              <img src="{{ image_url_abs }}" alt="AI image" class="card-img-top generated-image" id="genDetailImage" style="max-height: 320px; object-fit: contain; background: #f8f9fa;">
               <div class="text-center my-3 d-flex flex-wrap gap-2 justify-content-center">
                 <button onclick="downloadImage(document.getElementById('genDetailImage').src)" class="btn btn-outline-success">
                   <i class="bi bi-download me-2"></i>Сохранить изображение
                 </button>
               </div>
             {% endif %}
+          {% endwith %}
           {% endwith %}
           <div class="text-center my-3">
             <form method="get" action="{% url 'delete_generation' gen.id %}" onsubmit="return confirm('Удалить этот пост?');" style="display:inline;">

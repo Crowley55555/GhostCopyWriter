@@ -65,7 +65,8 @@
                     <span class="badge bg-info text-dark">{{ gen.platform }}</span>
                 </div>
                 {% if gen.image_url %}
-                    {% with images=gen.image_url|split:"|" %}
+                    {% with image_url_abs=gen.image_url|media_urls_absolute:request %}
+                    {% with images=image_url_abs|split:"|" %}
                         {% if images|length > 1 %}
                             <div class="image-carousel" style="max-height: 120px; overflow: hidden; position: relative;">
                                 <img src="{{ images.0 }}" alt="AI image" class="card-img-top generated-image" style="max-height: 120px; object-fit: cover;">
@@ -74,8 +75,9 @@
                                 </div>
                             </div>
                         {% else %}
-                            <img src="{{ gen.image_url }}" alt="AI image" class="card-img-top generated-image" style="max-height: 120px; object-fit: cover;">
+                            <img src="{{ image_url_abs }}" alt="AI image" class="card-img-top generated-image" style="max-height: 120px; object-fit: cover;">
                         {% endif %}
+                    {% endwith %}
                     {% endwith %}
                 {% endif %}
                 <div class="card-body">
