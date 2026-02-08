@@ -10,6 +10,11 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from gigachat import GigaChat as GigaChatDirect
 from gigachat.models import Chat, Messages, MessagesRole
 
+try:
+    from gigachat.exceptions import ResponseError as GigaChatResponseError
+except ImportError:
+    GigaChatResponseError = Exception  # fallback if module structure differs
+
 # Импорт для логирования токенов
 try:
     from generator.models import GigaChatTokenUsage, Generation
@@ -691,8 +696,25 @@ def generate_image_gigachat(image_prompt, user=None, token=None, generation_id=N
             function_call="auto",
         )
         print("Отправка запроса на генерацию изображения...")
-        response = giga.chat(payload)
-        response_content = response.choices[0].message.content
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = giga.chat(payload)
+                response_content = response.choices[0].message.content
+                break
+            except Exception as chat_err:
+                last_error = chat_err
+                err_str = str(chat_err)
+                if ("429" in err_str or "Too Many Requests" in err_str) and attempt < 2:
+                    wait_sec = 15 * (attempt + 1)
+                    print(f"GigaChat 429 Too Many Requests, повтор через {wait_sec} с (попытка {attempt + 1}/3)")
+                    time.sleep(wait_sec)
+                else:
+                    raise
+        else:
+            if last_error:
+                raise last_error
+            raise RuntimeError("Не удалось получить ответ GigaChat")
         print("GigaChat image response:", response_content)
         # Если ответ уже содержит готовое base64 изображение, возвращаем его напрямую
         if isinstance(response_content, str) and response_content.strip().startswith("data:image"):

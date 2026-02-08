@@ -29,6 +29,7 @@ from .decorators import consume_generation, token_required
 import os
 import base64
 import re
+import time
 import requests
 
 # =============================================================================
@@ -494,6 +495,9 @@ def generate_image_from_text(request):
             # Если не удалось сгенерировать промпт, используем простое описание
             if not image_prompt:
                 image_prompt = f"Сделай яркую иллюстрацию для социальной сети на тему: '{topic or result_text[:100]}'. Стиль: цифровая живопись, яркие цвета."
+            
+            # Пауза между запросом промпта и запросом изображения, чтобы не упираться в 429 GigaChat
+            time.sleep(5)
             
             # Запускаем генерацию изображения
             from .gigachat_api import generate_image_gigachat
