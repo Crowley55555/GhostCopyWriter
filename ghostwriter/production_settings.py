@@ -17,7 +17,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'change-me-in-production')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', 'localhost').split(',') if h.strip()]
 
 # Application definition
 INSTALLED_APPS = [
@@ -130,20 +130,25 @@ if os.environ.get('USE_HTTPS', 'False').lower() == 'true':
     # Если Django за reverse proxy, добавьте заголовок
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# CSRF настройки для продакшена
-CSRF_TRUSTED_ORIGINS = [
-    f'https://{host}' for host in ALLOWED_HOSTS if host != 'localhost'
-]
+# CSRF настройки для продакшена (и http, и https для каждого хоста)
+CSRF_TRUSTED_ORIGINS = []
+for host in ALLOWED_HOSTS:
+    if host and host != 'localhost':
+        CSRF_TRUSTED_ORIGINS.append(f'https://{host}')
+        CSRF_TRUSTED_ORIGINS.append(f'http://{host}')
+
+# URL сайта (ссылки в письмах, токены, бот)
+SITE_URL = (os.environ.get('SITE_URL') or 'http://localhost:8000').rstrip('/')
 
 # Session settings
 SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
 SESSION_CACHE_ALIAS = 'default'
 SESSION_COOKIE_AGE = 86400  # 24 часа
 
-# Cache settings (Redis)
+# Cache settings (Redis) — используем django_redis, т.к. сессии cached_db и OPTIONS совместимы с ним
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'BACKEND': 'django_redis.cache.RedisCache',
         'LOCATION': os.environ.get('REDIS_URL', 'redis://localhost:6379/0'),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
