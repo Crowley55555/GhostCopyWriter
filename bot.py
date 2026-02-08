@@ -31,7 +31,7 @@ from pathlib import Path
 from decimal import Decimal
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
 # ЮКасса SDK
 try:
@@ -69,6 +69,11 @@ EXECUTOR_CITY = os.getenv('EXECUTOR_CITY', 'Москва, Россия')
 # ЮКасса настройки
 YOOKASSA_SHOP_ID = os.getenv('YOOKASSA_SHOP_ID', '')
 YOOKASSA_SECRET_KEY = os.getenv('YOOKASSA_SECRET_KEY', '')
+
+# Группа техподдержки и отзывов (ссылка-приглашение или username группы)
+SUPPORT_GROUP_URL = os.getenv('TELEGRAM_SUPPORT_GROUP_URL', '')  # https://t.me/ghostwriter_support или invite link
+REVIEWS_GROUP_URL = os.getenv('TELEGRAM_REVIEWS_GROUP_URL', '')  # опционально: канал отзывов
+TELEGRAM_ADMIN_IDS = [int(x) for x in os.getenv('TELEGRAM_ADMIN_IDS', '').split(',') if x.strip()]  # ID админов для уведомлений
 
 # Инициализация ЮКасса
 if YOOKASSA_AVAILABLE and YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY:
@@ -354,9 +359,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await show_offer(update, context)
         return
     
-    # Показываем меню с тарифами
-    logger.info(f"Пользователь {user.id} уже принял документы, показываю меню")
-    await show_tariff_menu(update, context)
+    # Показываем главное меню
+    logger.info(f"Пользователь {user.id} уже принял документы, показываю главное меню")
+    await show_main_menu(update, context)
 
 
 async def show_offer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -411,46 +416,82 @@ async def show_offer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     logger.info(f"Пользователь {user.id} просматривает все документы")
 
 
-async def show_tariff_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Показывает меню с тарифами"""
-    # Определяем, откуда пришел запрос (message или callback_query)
+def _get_main_menu_keyboard():
+    """Клавиатура главного меню: Тарифы, Мои токены, Техподдержка, Отзыв"""
+    keyboard = [
+        [InlineKeyboardButton("💳 Тарифы и оплата", callback_data='menu_tariffs')],
+        [InlineKeyboardButton("🎫 Мои токены", callback_data='menu_my_tokens')],
+    ]
+    if SUPPORT_GROUP_URL:
+        keyboard.append([InlineKeyboardButton("💬 Техподдержка", url=SUPPORT_GROUP_URL)])
+    else:
+        keyboard.append([InlineKeyboardButton("💬 Техподдержка", callback_data='menu_support_placeholder')])
+    keyboard.append([InlineKeyboardButton("⭐ Оставить отзыв", callback_data='menu_review')])
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает главное меню: Тарифы, Мои токены, Техподдержка, Отзыв"""
     message = update.message
     if not message and update.callback_query:
         message = update.callback_query.message
-    
+    if not message:
+        logger.error("Не удалось получить message в show_main_menu")
+        return
+    text = (
+        "👋 <b>Ghostwriter</b> — генератор контента для соцсетей.\n\n"
+        "Выберите действие:"
+    )
+    try:
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                text=text,
+                parse_mode='HTML',
+                reply_markup=_get_main_menu_keyboard()
+            )
+        else:
+            await message.reply_html(text, reply_markup=_get_main_menu_keyboard())
+    except Exception as e:
+        logger.warning(f"edit_message_text failed (maybe same content): {e}")
+        await message.reply_html(text, reply_markup=_get_main_menu_keyboard())
+
+
+async def show_tariff_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает меню с тарифами"""
+    message = update.message
+    if not message and update.callback_query:
+        message = update.callback_query.message
     if not message:
         logger.error("Не удалось получить message из update в show_tariff_menu")
         return
-    
-    # Создаем inline клавиатуру с кнопками
     keyboard = [
         [InlineKeyboardButton("🆓 Бесплатный старт", callback_data='demo_free')],
         [InlineKeyboardButton("📊 Базовый - 590₽/мес", callback_data='buy_basic')],
         [InlineKeyboardButton("⭐ Про - 1190₽/мес", callback_data='buy_pro')],
         [InlineKeyboardButton("🚀 Безлимит - 2490₽/мес", callback_data='buy_unlimited')],
+        [InlineKeyboardButton("« Назад в меню", callback_data='back_to_menu')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
     welcome_text = (
-        f"👋 Привет!\n\n"
-        f"Добро пожаловать в <b>Ghostwriter</b> - генератор контента для соцсетей!\n\n"
-        f"Выберите тариф для получения доступа:\n\n"
-        f"🆓 <b>Бесплатный старт</b>\n"
-        f"30 000 токенов GigaChat + 30 000 OpenAI\n"
-        f"Бессрочно, одноразово\n\n"
-        f"📊 <b>Базовый</b> - 590₽/мес\n"
-        f"200 000 GigaChat + 100 000 OpenAI\n\n"
-        f"⭐ <b>Про</b> - 1 190₽/мес\n"
-        f"500 000 GigaChat + 200 000 OpenAI\n\n"
-        f"🚀 <b>Безлимит</b> - 2 490₽/мес\n"
-        f"∞ GigaChat + 500 000 OpenAI\n\n"
-        f"🔒 <i>Мы не собираем персональные данные. Полная анонимность.</i>"
+        "💳 <b>Тарифы и оплата</b>\n\n"
+        "Выберите тариф для получения доступа:\n\n"
+        "🆓 <b>Бесплатный старт</b> — 30 000 GigaChat + 30 000 OpenAI, бессрочно\n"
+        "📊 <b>Базовый</b> — 590₽/мес\n"
+        "⭐ <b>Про</b> — 1 190₽/мес\n"
+        "🚀 <b>Безлимит</b> — 2 490₽/мес\n\n"
+        "🔒 <i>Полная анонимность.</i>"
     )
-    
-    await message.reply_html(
-        welcome_text,
-        reply_markup=reply_markup
-    )
+    try:
+        if update.callback_query:
+            await update.callback_query.edit_message_text(
+                text=welcome_text,
+                parse_mode='HTML',
+                reply_markup=reply_markup
+            )
+        else:
+            await message.reply_html(welcome_text, reply_markup=reply_markup)
+    except Exception as e:
+        await message.reply_html(welcome_text, reply_markup=reply_markup)
 
 
 async def process_demo_token(query, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -549,27 +590,25 @@ async def process_demo_token(query, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 
-def create_token_via_api(token_type):
+def create_token_via_api(token_type, telegram_user_id=None):
     """
     Создает токен через Django API
     
     Args:
         token_type: Тип токена ('DEMO_FREE', 'BASIC', 'PRO', 'UNLIMITED')
+        telegram_user_id: ID пользователя в Telegram (опционально, для защиты от мультиаккаунтов)
     
     Returns:
         dict: Данные токена или None при ошибке
     """
     try:
-        # Отправляем запрос к Django API
         url = f"{DJANGO_API_URL}/api/tokens/create/"
-        
         headers = {}
         if DJANGO_API_KEY:
             headers['X-API-Key'] = DJANGO_API_KEY
-        
-        data = {
-            'token_type': token_type,
-        }
+        data = {'token_type': token_type}
+        if telegram_user_id is not None:
+            data['telegram_user_id'] = telegram_user_id
         
         logger.info(f"Отправка запроса к Django API: {url}, тип: {token_type}")
         response = requests.post(url, json=data, headers=headers, timeout=10)
@@ -664,6 +703,53 @@ def create_yookassa_payment(user_id: int, username: str = None, tariff_type: str
         
     except Exception as e:
         logger.error(f"❌ Ошибка создания платежа ЮКасса: {e}")
+        return None
+
+
+def save_review_via_api(telegram_user_id: int, telegram_username: str, text: str, rating: int = None):
+    """Отправляет отзыв в Django API. Возвращает dict с id/status или None."""
+    try:
+        url = f"{DJANGO_API_URL}/api/reviews/create/"
+        headers = {}
+        if DJANGO_API_KEY:
+            headers['X-API-Key'] = DJANGO_API_KEY
+        data = {
+            'telegram_user_id': telegram_user_id,
+            'telegram_username': telegram_username or '',
+            'text': text,
+        }
+        if rating is not None:
+            data['rating'] = rating
+        response = requests.post(url, json=data, headers=headers, timeout=10)
+        if response.status_code == 201:
+            return response.json()
+        logger.warning(f"API reviews/create: {response.status_code} {response.text}")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка сохранения отзыва в Django: {e}")
+        return None
+
+
+def save_support_ticket_via_api(telegram_user_id: int, telegram_username: str, message: str, subject: str = '', source: str = 'bot'):
+    """Создаёт тикет поддержки через Django API."""
+    try:
+        url = f"{DJANGO_API_URL}/api/support/create/"
+        headers = {}
+        if DJANGO_API_KEY:
+            headers['X-API-Key'] = DJANGO_API_KEY
+        data = {
+            'telegram_user_id': telegram_user_id,
+            'telegram_username': telegram_username or '',
+            'message': message,
+            'subject': subject,
+            'source': source,
+        }
+        response = requests.post(url, json=data, headers=headers, timeout=10)
+        if response.status_code == 201:
+            return response.json()
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка создания тикета: {e}")
         return None
 
 
@@ -1007,8 +1093,92 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
     
     elif action == 'back_to_menu':
-        # Возврат в главное меню
+        await show_main_menu(update, context)
+    elif action == 'menu_tariffs':
         await show_tariff_menu(update, context)
+    elif action == 'menu_my_tokens':
+        # Мои токены — показываем тарифы (получить/восстановить ссылку)
+        await show_tariff_menu(update, context)
+    elif action == 'menu_support_placeholder':
+        await query.answer(
+            "Ссылка на группу поддержки не настроена. Добавьте TELEGRAM_SUPPORT_GROUP_URL в .env",
+            show_alert=True
+        )
+    elif action == 'menu_review':
+        context.user_data['awaiting_review'] = True
+        await query.edit_message_text(
+            text="⭐ <b>Оставить отзыв</b>\n\n"
+                 "Напишите текст отзыва одним сообщением.\n"
+                 "Оценку можно указать в конце, например: <i>Отличный сервис! 5</i>",
+            parse_mode='HTML'
+        )
+
+
+# --- Автоответы в группе поддержки (ключевые слова -> ответ) ---
+SUPPORT_AUTO_REPLIES = {
+    'оплата': "💳 Оплата: выберите тариф в боте (@ghostwriter_bot) → Оплатить. После оплаты нажмите «Проверить оплату» для получения ссылки.",
+    'токен': "🎫 Ссылка с токеном выдаётся в боте после оплаты или при выборе «Бесплатный старт». Сохраните её — она работает как вход.",
+    'не работает': "Проверьте: 1) Ссылка открыта в браузере по той же ссылке из бота. 2) Если ошибка при генерации — напишите в личку боту с описанием.",
+    'подписка': "Подписка продлевается автоматически. Отменить можно в боте. Вопросы по тарифам — в личку боту.",
+    'помощь': "Напишите ваш вопрос здесь или в личку боту. Для личного чата с поддержкой используйте /support.",
+}
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка текстовых сообщений: форма отзыва и сообщения в группе поддержки."""
+    if not update.message or not update.message.text:
+        return
+    user = update.effective_user
+    chat = update.effective_chat
+    text = (update.message.text or "").strip()
+    # Личка: ожидание отзыва
+    if chat.type == "private" and context.user_data.get('awaiting_review'):
+        context.user_data.pop('awaiting_review', None)
+        if not text:
+            await update.message.reply_html("Текст отзыва не может быть пустым. Напишите снова или нажмите /start.")
+            return
+        # Опциональная оценка в конце: "Текст 5" или "Текст ★5"
+        rating = None
+        import re
+        m = re.search(r'[★*]?\s*([1-5])\s*$', text)
+        if m:
+            rating = int(m.group(1))
+            text = text[:m.start()].strip()
+        if not text:
+            await update.message.reply_html("Напишите текст отзыва.")
+            return
+        result = save_review_via_api(user.id, user.username, text, rating)
+        if result:
+            await update.message.reply_html(
+                "✅ <b>Спасибо!</b> Ваш отзыв отправлен на модерацию."
+            )
+        else:
+            await update.message.reply_html(
+                "❌ Не удалось отправить отзыв. Попробуйте позже или напишите в поддержку."
+            )
+        return
+    # Группа/супергруппа: автоответы и /support
+    if chat.type in ("group", "supergroup"):
+        # Команда /support — создать тикет и предложить написать в личку
+        if text.startswith("/support") or text.strip().lower() == "/support":
+            save_support_ticket_via_api(
+                user.id, user.username,
+                message="Запрос приватной поддержки из группы",
+                subject="Запрос из группы",
+                source="group"
+            )
+            bot_username = (await context.bot.get_me()).username
+            await update.message.reply_html(
+                f"💬 Для личного разговора с поддержкой напишите в личку боту: @{bot_username}\n"
+                "Опишите вопрос там — мы ответим."
+            )
+            return
+        # Автоответы по ключевым словам
+        lower = text.lower()
+        for keyword, reply in SUPPORT_AUTO_REPLIES.items():
+            if keyword in lower:
+                await update.message.reply_text(reply)
+                return
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1085,9 +1255,13 @@ def main_polling():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("plans", plans_command))
+    application.add_handler(CommandHandler("support", start_command))  # /support в личке — в меню
     
-    # Регистрируем обработчик callback'ов от inline кнопок
+    # Обработчик inline кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
+    
+    # Текстовые сообщения: форма отзыва и группа поддержки
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Регистрируем обработчик ошибок
     application.add_error_handler(error_handler)

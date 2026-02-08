@@ -231,12 +231,10 @@ class TemporaryAccessToken(models.Model):
         verbose_name_plural = "Временные токены доступа"
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['telegram_user_id', 'token_type', 'is_active']),
-            models.Index(fields=['telegram_user_id', 'is_active']),
-        ]
-        indexes = [
             models.Index(fields=['token']),
             models.Index(fields=['is_active', 'expires_at']),
+            models.Index(fields=['telegram_user_id', 'token_type', 'is_active']),
+            models.Index(fields=['telegram_user_id', 'is_active']),
         ]
     
     def __str__(self):
@@ -923,4 +921,115 @@ class Payment(models.Model):
             'by_day': by_day,
             'period_days': days
         }
+
+
+class SupportTicket(models.Model):
+    """
+    Тикет техподдержки (из бота или группы).
+    """
+    STATUS = (
+        ('open', 'Открыт'),
+        ('in_progress', 'В работе'),
+        ('resolved', 'Решён'),
+        ('closed', 'Закрыт'),
+    )
+    telegram_user_id = models.BigIntegerField(verbose_name="Telegram User ID")
+    telegram_username = models.CharField(max_length=100, blank=True, null=True)
+    subject = models.CharField(max_length=255, blank=True, verbose_name="Тема")
+    message = models.TextField(verbose_name="Сообщение")
+    status = models.CharField(max_length=20, choices=STATUS, default='open')
+    source = models.CharField(max_length=20, default='bot', help_text="bot | group")
+    support_chat = models.ForeignKey(
+        'SupportChat',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tickets',
+        verbose_name="Приватный чат"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Тикет поддержки"
+        verbose_name_plural = "Тикеты поддержки"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['telegram_user_id']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"#{self.id} {self.get_status_display()} — {self.telegram_user_id}"
+
+
+class Review(models.Model):
+    """
+    Отзыв пользователя (форма в боте, опционально публикация в канал).
+    """
+    MODERATION = (
+        ('pending', 'На модерации'),
+        ('approved', 'Одобрен'),
+        ('rejected', 'Отклонён'),
+    )
+    telegram_user_id = models.BigIntegerField(verbose_name="Telegram User ID")
+    telegram_username = models.CharField(max_length=100, blank=True, null=True)
+    text = models.TextField(verbose_name="Текст отзыва")
+    rating = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Оценка",
+        help_text="1-5 звёзд"
+    )
+    moderation_status = models.CharField(
+        max_length=20,
+        choices=MODERATION,
+        default='pending'
+    )
+    published_at = models.DateTimeField(null=True, blank=True, verbose_name="Опубликован")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Отзыв"
+        verbose_name_plural = "Отзывы"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['telegram_user_id']),
+            models.Index(fields=['moderation_status', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"Отзыв #{self.id} — {self.telegram_user_id} ({self.get_moderation_status_display()})"
+
+
+class SupportChat(models.Model):
+    """
+    Приватный чат поддержки: пользователь + бот + админ.
+    Создаётся по команде /support в группе, закрывается после решения.
+    """
+    STATUS = (
+        ('open', 'Открыт'),
+        ('closed', 'Закрыт'),
+    )
+    telegram_user_id = models.BigIntegerField(verbose_name="Telegram User ID")
+    telegram_username = models.CharField(max_length=100, blank=True, null=True)
+    telegram_chat_id = models.BigIntegerField(
+        verbose_name="ID приватного чата",
+        help_text="ID чата с пользователем (для пересылки сообщений)"
+    )
+    status = models.CharField(max_length=20, choices=STATUS, default='open')
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Чат поддержки"
+        verbose_name_plural = "Чаты поддержки"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['telegram_user_id']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"Чат #{self.id} — user {self.telegram_user_id} ({self.get_status_display()})"
 
