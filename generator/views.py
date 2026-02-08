@@ -617,10 +617,6 @@ def regenerate_image(request):
             image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
             
             if image_data:
-                print(f"Тип image_data: {type(image_data)}")
-                print(f"Длина image_data: {len(image_data)}")
-                print(f"Первые 100 символов image_data: {image_data[:100]}")
-                
                 if image_data.startswith("data:image"):
                     # Это base64 данные от GigaChat - сохраняем локально
                     try:

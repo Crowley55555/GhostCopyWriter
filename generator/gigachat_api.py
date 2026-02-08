@@ -852,54 +852,31 @@ def download_image(giga_client, file_id):
             except Exception as ex:
                 print(f"Ошибка скачивания по ссылке: {ex}")
         
-        print(f"Скачиваем изображение с ID: {file_id}")
         image_response = giga_client.get_image(file_id)
-        
-        print(f"Тип ответа: {type(image_response)}")
-        print(f"Атрибуты ответа: {dir(image_response)}")
         
         if image_response and hasattr(image_response, 'content'):
             content = image_response.content
-            print(f"Тип content: {type(content)}")
-            print(f"Размер контента: {len(content)} байт/символов")
-            print(f"Первые 100 символов content: {str(content)[:100]}")
             
             # Проверяем тип content и обрабатываем соответственно
             if isinstance(content, str):
-                # Если content - строка, возможно это уже base64
                 if content.startswith('data:image'):
-                    print("Content уже в формате data:image")
                     return content
-                else:
-                    # Если это строка, но не data:image, то это уже base64 данные
-                    try:
-                        import base64
-                        # Проверяем, что это валидный base64
-                        if len(content) > 1000:  # Должно быть достаточно длинным для изображения
-                            result = f"data:image/jpeg;base64,{content}"
-                            print(f"Обрабатываем строку как base64, длина: {len(content)}")
-                            print(f"Base64 результат (первые 100 символов): {result[:100]}...")
-                            return result
-                        else:
-                            print(f"Строка слишком короткая для изображения: {len(content)}")
-                            return None
-                    except Exception as e:
-                        print(f"Ошибка при обработке строки как base64: {e}")
-                        return None
+                try:
+                    if len(content) > 1000:
+                        return f"data:image/jpeg;base64,{content}"
+                    return None
+                except Exception as e:
+                    print(f"Ошибка при обработке base64: {e}")
+                    return None
             elif isinstance(content, bytes):
-                # Если content - байты, кодируем в base64
                 import base64
                 image_base64 = base64.b64encode(content).decode('utf-8')
-                result = f"data:image/jpeg;base64,{image_base64}"
-                print(f"Base64 результат (первые 100 символов): {result[:100]}...")
-                print(f"Длина base64: {len(image_base64)}")
-                return result
+                return f"data:image/jpeg;base64,{image_base64}"
             else:
                 print(f"Неизвестный тип content: {type(content)}")
                 return None
         else:
             print("Пустой ответ при скачивании изображения")
-            print(f"image_response: {image_response}")
             return None
             
     except Exception as e:
