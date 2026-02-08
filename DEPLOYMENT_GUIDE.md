@@ -13,12 +13,13 @@
 3. [Подготовка: ключи и токены](#подготовка-ключи-и-токены)
 4. [Пошаговый деплой на облачном сервере](#пошаговый-деплой-на-облачном-сервере)
 5. [Настройка домена и SSL](#настройка-домена-и-ssl)
-6. [Переменные окружения](#переменные-окружения)
-7. [Миграции и команды Django](#миграции-и-команды-django)
-8. [Деплой Flask (зарубежный сервер)](#деплой-flask-зарубежный-сервер)
-9. [Резервное копирование](#резервное-копирование)
-10. [Устранение неполадок](#устранение-неполадок)
-11. [Чеклист перед запуском](#чеклист-перед-запуском)
+6. [Обновление проекта с Git](#обновление-проекта-с-git)
+7. [Переменные окружения](#переменные-окружения)
+8. [Миграции и команды Django](#миграции-и-команды-django)
+9. [Деплой Flask (зарубежный сервер)](#деплой-flask-зарубежный-сервер)
+10. [Резервное копирование](#резервное-копирование)
+11. [Устранение неполадок](#устранение-неполадок)
+12. [Чеклист перед запуском](#чеклист-перед-запуском)
 
 ---
 
@@ -293,6 +294,41 @@ docker compose -f docker-compose.production.yml restart django
 ```bash
 0 0 1 * * certbot renew --quiet && cp /etc/letsencrypt/live/yourdomain.com/*.pem /opt/ghostwriter/ssl/ && docker compose -f /opt/ghostwriter/docker-compose.production.yml restart nginx
 ```
+
+### Переход с IP на домен
+
+Пока DNS не обновился, в `.env` можно использовать IP: `SITE_URL=https://85.208.86.148`. Когда домен начнёт открываться (например, ghostcopywriter.ru), переключите ссылки на домен:
+
+```bash
+cd /opt/ghostwriter
+sed -i 's|SITE_URL=.*|SITE_URL=https://ghostcopywriter.ru|' .env
+docker compose -f docker-compose.production.yml up -d
+```
+
+Проверьте: `grep SITE_URL .env` — должно быть `SITE_URL=https://ghostcopywriter.ru`. В `nginx.prod.conf` должен быть соответствующий `server_name ghostcopywriter.ru www.ghostcopywriter.ru;`.
+
+---
+
+## Обновление проекта с Git
+
+Чтобы подтянуть новые коммиты и перезапустить приложение **без повторного полного деплоя**:
+
+```bash
+cd /opt/ghostwriter
+git pull
+docker compose -f docker-compose.production.yml up -d --build
+```
+
+- **`git pull`** — забирает изменения из удалённого репозитория (ветка по умолчанию, обычно `main` или `dev`). Если вы работаете в другой ветке, сначала переключитесь: `git checkout имя-ветки`, затем `git pull`.
+- **`up -d --build`** — пересобирает образы при изменении Dockerfile/зависимостей и перезапускает контейнеры. Миграции применятся автоматически при старте Django (entrypoint).
+
+Если в проекте появились **новые миграции**, они применятся при старте контейнера `django`. Проверить статус миграций:
+
+```bash
+docker compose -f docker-compose.production.yml exec django python manage.py showmigrations
+```
+
+Файл `.env` при `git pull` не перезаписывается (он в `.gitignore`), настройки окружения сохраняются.
 
 ---
 
