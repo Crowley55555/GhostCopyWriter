@@ -22,4 +22,8 @@ urlpatterns = [
     path('payments/create/', views.api_create_payment, name='api_create_payment'),
     path('payments/yookassa/webhook/', views.api_yookassa_webhook, name='api_yookassa_webhook'),
     path('payments/<str:payment_id>/confirm/', views.api_confirm_payment, name='api_confirm_payment'),
+    # Support & Reviews
+    path('support/create/', views.api_support_create, name='api_support_create'),
+    path('reviews/create/', views.api_reviews_create, name='api_reviews_create'),
+    path('support/stats/', views.api_support_stats, name='api_support_stats'),
 ] 

@@ -1,21 +1,18 @@
 # =============================================================================
 # GHOSTWRITER - Docker Compose для PRODUCTION
 # =============================================================================
-# Развертывание на российском сервере: Django + Bot + PostgreSQL + Redis + Nginx
-# Flask микросервис деплоится отдельно на зарубежном сервере
-# Nginx работает как reverse proxy для Django (SSL, статика, безопасность)
-# 
-# Версия 2.2 - включает:
-# - Защита от мультиаккаунтов (один DEMO токен на пользователя, одна активная подписка)
-# - Обновленные тарифы (новые лимиты токенов и цены)
-# - Отказ от ответственности в боте и веб-приложении
-# - Удаление legacy полей из базы данных
-# - Мониторинг токенов GigaChat и OpenAI
-# - Отслеживание кликов по кнопке подписки
-# - Privacy-compliant публичный бот
+# Развертывание на облачном сервере: Django + Bot + PostgreSQL + Redis + Nginx.
+# Flask микросервис деплоится отдельно на зарубежном сервере.
+# Nginx: reverse proxy, SSL, статика.
+#
+# Версия 2.3 - включает:
+# - Защита от мультиаккаунтов, тарифы, ЮКасса, оферта и отказ от ответственности
+# - Главное меню бота: Тарифы, Мои токены, Техподдержка, Оставить отзыв
+# - Модели SupportTicket, Review, SupportChat; API support/reviews
+# - Миграции до 0018_support_reviews (применяются в entrypoint Django)
 # =============================================================================
-# Запуск: docker-compose -f docker-compose.production.yml up -d
-# Логи: docker-compose -f docker-compose.production.yml logs -f
+# Запуск: docker compose -f docker-compose.production.yml up -d --build
+# Логи:  docker compose -f docker-compose.production.yml logs -f
 # =============================================================================
 
 version: '3.8'
@@ -101,12 +98,15 @@ services:
     container_name: ghostwriter-bot-prod
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
-      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
-      - BOT_USERNAME=${BOT_USERNAME}
+      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL:-}
+      - BOT_USERNAME=${BOT_USERNAME:-ghostwriter_bot}
       - DJANGO_API_URL=http://django:8000
       - DJANGO_API_KEY=${DJANGO_API_KEY:-}
       - SITE_URL=${SITE_URL}
+      # Поддержка и отзывы (кнопки в меню, группа)
+      - TELEGRAM_SUPPORT_GROUP_URL=${TELEGRAM_SUPPORT_GROUP_URL:-}
+      - TELEGRAM_ADMIN_IDS=${TELEGRAM_ADMIN_IDS:-}
       # Реквизиты исполнителя (для оферты)
       - EXECUTOR_FULL_NAME=${EXECUTOR_FULL_NAME}
       - EXECUTOR_INN=${EXECUTOR_INN}

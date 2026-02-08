@@ -17,7 +17,7 @@ from datetime import datetime
 # PROJECT IMPORTS
 # =============================================================================
 from .forms import GenerationForm, LoginForm
-from .models import Generation, UserProfile, GenerationTemplate
+from .models import Generation, UserProfile, GenerationTemplate, SupportTicket, Review, SupportChat
 from .gigachat_api import generate_text, generate_image_gigachat
 from .yandex_image_api import generate_image as generate_image_yandex
 from .fastapi_client import generate_text_and_prompt, generate_image
@@ -1977,6 +1977,117 @@ def api_confirm_payment(request, payment_id):
         return JsonResponse({
             'error': str(e)
         }, status=500)
+
+
+# =============================================================================
+# SUPPORT & REVIEWS API
+# =============================================================================
+
+@csrf_exempt
+@require_POST
+def api_support_create(request):
+    """
+    Создание тикета техподдержки.
+    POST /api/support/create/
+    Body: { "telegram_user_id", "telegram_username?", "subject?", "message", "source?" }
+    """
+    import json
+    api_key = request.headers.get('X-API-Key')
+    expected_key = getattr(settings, 'DJANGO_API_KEY', None)
+    if expected_key and api_key != expected_key:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+    try:
+        data = json.loads(request.body) if request.body else {}
+        if not data.get('telegram_user_id') or not data.get('message'):
+            return JsonResponse({'error': 'telegram_user_id and message are required'}, status=400)
+        ticket = SupportTicket.objects.create(
+            telegram_user_id=data['telegram_user_id'],
+            telegram_username=data.get('telegram_username'),
+            subject=data.get('subject', ''),
+            message=data['message'],
+            source=data.get('source', 'bot')
+        )
+        return JsonResponse({
+            'id': ticket.id,
+            'status': ticket.status,
+            'created_at': ticket.created_at.isoformat()
+        }, status=201)
+    except (KeyError, TypeError) as e:
+        return JsonResponse({'error': 'Invalid payload', 'detail': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_POST
+def api_reviews_create(request):
+    """
+    Создание отзыва.
+    POST /api/reviews/create/
+    Body: { "telegram_user_id", "telegram_username?", "text", "rating?" }
+    """
+    import json
+    api_key = request.headers.get('X-API-Key')
+    expected_key = getattr(settings, 'DJANGO_API_KEY', None)
+    if expected_key and api_key != expected_key:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+    try:
+        data = json.loads(request.body) if request.body else {}
+        if not data.get('telegram_user_id'):
+            return JsonResponse({'error': 'telegram_user_id is required'}, status=400)
+        rating = data.get('rating')
+        if rating is not None and (not isinstance(rating, int) or rating < 1 or rating > 5):
+            return JsonResponse({'error': 'rating must be 1-5'}, status=400)
+        review = Review.objects.create(
+            telegram_user_id=data['telegram_user_id'],
+            telegram_username=data.get('telegram_username'),
+            text=data.get('text', ''),
+            rating=rating
+        )
+        return JsonResponse({
+            'id': review.id,
+            'moderation_status': review.moderation_status,
+            'created_at': review.created_at.isoformat()
+        }, status=201)
+    except (KeyError, TypeError) as e:
+        return JsonResponse({'error': 'Invalid payload', 'detail': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_GET
+def api_support_stats(request):
+    """
+    Статистика обращений для админов.
+    GET /api/support/stats/?days=30
+    Требует X-API-Key.
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+    from django.db.models import Count
+    api_key = request.headers.get('X-API-Key')
+    expected_key = getattr(settings, 'DJANGO_API_KEY', None)
+    if expected_key and api_key != expected_key:
+        return JsonResponse({'error': 'Unauthorized'}, status=401)
+    try:
+        days = int(request.GET.get('days', 30))
+        days = min(max(days, 1), 365)
+        cutoff = timezone.now() - timedelta(days=days)
+        tickets = SupportTicket.objects.filter(created_at__gte=cutoff)
+        by_status = dict(tickets.values('status').annotate(count=Count('id')).values_list('status', 'count'))
+        reviews = Review.objects.filter(created_at__gte=cutoff)
+        reviews_pending = reviews.filter(moderation_status='pending').count()
+        return JsonResponse({
+            'period_days': days,
+            'tickets_total': tickets.count(),
+            'tickets_by_status': by_status,
+            'reviews_total': reviews.count(),
+            'reviews_pending': reviews_pending,
+            'support_chats_open': SupportChat.objects.filter(status='open').count()
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 def send_payment_success_notification(telegram_user_id, token_url, expires_at, tariff_type='BASIC'):

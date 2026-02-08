@@ -1,4 +1,4 @@
-from .models import UserProfile, Generation, TemporaryAccessToken, GenerationTemplate, GigaChatTokenUsage, SubscriptionButtonClick, Payment
+from .models import UserProfile, Generation, TemporaryAccessToken, GenerationTemplate, GigaChatTokenUsage, SubscriptionButtonClick, Payment, SupportTicket, Review, SupportChat
 from django.contrib import admin
 from django.utils.html import format_html
 from django.db.models import Sum, Count, Avg
@@ -670,6 +670,49 @@ class PaymentAdmin(admin.ModelAdmin):
             print(f"Ошибка при расчете статистики платежей: {e}")
         
         return response
+
+
+@admin.register(SupportTicket)
+class SupportTicketAdmin(admin.ModelAdmin):
+    list_display = ['id', 'telegram_user_id', 'telegram_username', 'subject_short', 'status', 'source', 'created_at']
+    list_filter = ['status', 'source', 'created_at']
+    search_fields = ['telegram_user_id', 'telegram_username', 'subject', 'message']
+    readonly_fields = ['created_at', 'updated_at']
+
+    def subject_short(self, obj):
+        return (obj.subject or obj.message[:50] or '-')[:50]
+    subject_short.short_description = 'Тема'
+
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    list_display = ['id', 'telegram_user_id', 'telegram_username', 'text_short', 'rating', 'moderation_status', 'created_at']
+    list_filter = ['moderation_status', 'rating', 'created_at']
+    search_fields = ['telegram_user_id', 'telegram_username', 'text']
+    readonly_fields = ['created_at']
+    actions = ['approve_reviews', 'reject_reviews']
+
+    def text_short(self, obj):
+        return (obj.text or '-')[:60] + ('...' if len(obj.text or '') > 60 else '')
+    text_short.short_description = 'Текст'
+
+    def approve_reviews(self, request, queryset):
+        count = queryset.update(moderation_status='approved')
+        self.message_user(request, f'Одобрено отзывов: {count}')
+    approve_reviews.short_description = 'Одобрить'
+
+    def reject_reviews(self, request, queryset):
+        count = queryset.update(moderation_status='rejected')
+        self.message_user(request, f'Отклонено отзывов: {count}')
+    reject_reviews.short_description = 'Отклонить'
+
+
+@admin.register(SupportChat)
+class SupportChatAdmin(admin.ModelAdmin):
+    list_display = ['id', 'telegram_user_id', 'telegram_username', 'status', 'created_at', 'closed_at']
+    list_filter = ['status', 'created_at']
+    search_fields = ['telegram_user_id', 'telegram_username']
+    readonly_fields = ['created_at']
 
 
 admin.site.register(UserProfile)

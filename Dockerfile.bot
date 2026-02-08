@@ -1,15 +1,16 @@
 # =============================================================================
 # GHOSTWRITER - Telegram Bot Dockerfile
 # =============================================================================
-# Отдельный контейнер для Telegram бота (polling mode)
+# Отдельный контейнер для Telegram бота (polling mode).
+# Зависимости: только нужные для бота (без Django).
 # =============================================================================
 
 FROM python:3.11-slim
 
 # Метаданные
 LABEL maintainer="Ghostwriter Team"
-LABEL version="2.2"
-LABEL description="Ghostwriter Telegram Bot - Automatic Token Generation with Anti-Multiaccount Protection"
+LABEL version="2.3"
+LABEL description="Ghostwriter Telegram Bot - Tokens, Payments, Support, Reviews"
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -24,10 +25,13 @@ RUN groupadd --system botuser \
 # Установка рабочей директории
 WORKDIR /app
 
-# Копирование requirements и установка зависимостей
-COPY requirements.txt .
+# Установка только зависимостей бота (без Django/DB)
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir python-telegram-bot==20.7 requests python-dotenv
+    && pip install --no-cache-dir \
+        python-telegram-bot==20.7 \
+        requests>=2.31.0 \
+        python-dotenv>=1.0.0 \
+        yookassa>=3.0.0
 
 # Копирование только необходимых файлов для бота
 COPY --chown=botuser:botuser bot.py .
