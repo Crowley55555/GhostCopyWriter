@@ -354,7 +354,7 @@
                 </div>
             </div>
             <div id="generationResult">
-            {% if result or image_url %}
+            {% if result or image_urls %}
             <div class="row mt-5">
                 {% if result %}
                 <div class="col-md-6 mb-4">
@@ -369,14 +369,16 @@
                     </div>
                 </div>
                 {% endif %}
-                {% if image_url %}
+                {% if image_urls %}
                 <div class="col-md-6 mb-4 text-center">
                     <div class="card shadow border-0 h-100">
                         <div class="card-header bg-info bg-gradient text-white">
                             <h5 class="mb-0"><i class="bi bi-image me-2"></i>Сгенерированное изображение</h5>
                         </div>
-                        <div class="card-body">
-                            <img src="{{ image_url }}" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image" style="max-height: 320px; object-fit: contain;">
+                        <div class="card-body" id="generatedImagesCardBody">
+                            {% for url in image_urls %}
+                            <img src="{{ url }}" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image d-block mb-3" style="max-height: 320px; object-fit: contain;">
+                            {% endfor %}
                             <button id="regenImageBtn" class="btn btn-outline-info mt-3 w-100" type="button">Перегенерировать изображение</button>
                         </div>
                     </div>
@@ -529,7 +531,10 @@ form.addEventListener('submit', function(e) {
             }
             if (data.image_url) {
                 setTimeout(() => showToast('Изображение успешно сгенерировано!', 'success'), 1800);
-                html += `<div class=\"col-md-6 mb-4 text-center\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-info bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-image me-2\"></i>Сгенерированное изображение</h5></div><div class=\"card-body\"><img src=\"${data.image_url}\" alt=\"AI generated image\" class=\"img-fluid rounded shadow-sm generated-image\" style=\"max-height: 320px; object-fit: contain;\"><button id=\"regenImageBtn\" class=\"btn btn-outline-info mt-3 w-100\" type=\"button\">Перегенерировать изображение</button></div></div></div>`;
+                const imgSrc = (typeof data.image_url === 'string' && data.image_url) ? data.image_url : '';
+                if (imgSrc) {
+                    html += `<div class="col-md-6 mb-4 text-center"><div class="card shadow border-0 h-100"><div class="card-header bg-info bg-gradient text-white"><h5 class="mb-0"><i class="bi bi-image me-2"></i>Сгенерированное изображение</h5></div><div class="card-body" id="generatedImagesCardBody"><img src="${imgSrc.replace(/"/g, '&quot;')}" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image d-block mb-3" style="max-height: 320px; object-fit: contain;"><button id="regenImageBtn" class="btn btn-outline-info mt-3 w-100" type="button">Перегенерировать изображение</button></div></div></div>`;
+                }
             }
             html += '</div>';
             resultBlock.innerHTML = html;
@@ -625,13 +630,15 @@ document.addEventListener('click', function(e) {
                         textCard.className = 'col-md-6 mb-4';
                     }
                     
-                    const imageHtml = `<div class="col-md-6 mb-4 text-center"><div class="card shadow border-0 h-100"><div class="card-header bg-info bg-gradient text-white"><h5 class="mb-0"><i class="bi bi-image me-2"></i>Сгенерированное изображение</h5></div><div class="card-body"><img src="${data.image_url}" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image" style="max-height: 320px; object-fit: contain;"><button id="regenImageBtn" class="btn btn-outline-info mt-3 w-100" type="button">Перегенерировать изображение</button></div></div></div>`;
-                    
+                    const imgSrc = (data.image_url && typeof data.image_url === 'string') ? data.image_url.replace(/"/g, '&quot;') : '';
+                if (imgSrc) {
+                    const imageHtml = `<div class="col-md-6 mb-4 text-center"><div class="card shadow border-0 h-100"><div class="card-header bg-info bg-gradient text-white"><h5 class="mb-0"><i class="bi bi-image me-2"></i>Сгенерированное изображение</h5></div><div class="card-body" id="generatedImagesCardBody"><img src="${imgSrc}" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image d-block mb-3" style="max-height: 320px; object-fit: contain;"><button id="regenImageBtn" class="btn btn-outline-info mt-3 w-100" type="button">Перегенерировать изображение</button></div></div></div>`;
                     if (resultBlock.querySelector('.row')) {
                         resultBlock.querySelector('.row').innerHTML += imageHtml;
                     } else {
                         resultBlock.innerHTML = `<div class="row mt-5">${resultBlock.innerHTML}${imageHtml}</div>`;
                     }
+                }
                 }
             } else {
                 btn.innerHTML = '<i class="bi bi-image me-2"></i>Сгенерировать изображение';
@@ -726,13 +733,17 @@ document.addEventListener('click', function(e) {
                 }
                 
                 showToast('Изображение успешно перегенерировано!', 'success');
-                // Обновить только картинку
+                // Добавить новое изображение ниже предыдущих (не заменять)
                 const imageCard = e.target.closest('.card-body');
-                if (imageCard) {
-                    const img = imageCard.querySelector('img.generated-image');
-                    if (img) {
-                        img.src = data.image_url;
-                    }
+                const regenBtn = e.target.id === 'regenImageBtn' ? e.target : e.target.closest('#regenImageBtn');
+                if (imageCard && regenBtn && data.image_url) {
+                    const newImg = document.createElement('img');
+                    newImg.src = data.image_url;
+                    newImg.alt = 'AI generated image';
+                    newImg.className = 'img-fluid rounded shadow-sm generated-image d-block mb-3';
+                    newImg.style.maxHeight = '320px';
+                    newImg.style.objectFit = 'contain';
+                    imageCard.insertBefore(newImg, regenBtn);
                 }
             } else {
                 showToast(data.error || 'Ошибка при перегенерации изображения', 'danger');

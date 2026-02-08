@@ -232,7 +232,7 @@ def generator_view(request):
                             image_bytes = base64.b64decode(base64_data)
                             with open(full_path, "wb") as f:
                                 f.write(image_bytes)
-                            image_url = settings.MEDIA_URL + filename
+                            image_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
                         elif image_data.startswith("http"):
                             image_url = image_data
                         else:
@@ -243,7 +243,7 @@ def generator_view(request):
                                 image_bytes = base64.b64decode(image_data)
                                 with open(full_path, "wb") as f:
                                     f.write(image_bytes)
-                                image_url = settings.MEDIA_URL + filename
+                                image_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
                             except Exception as e:
                                 image_url = None
                 # Обновляем запись генерации с изображением (если она уже создана)
@@ -297,11 +297,14 @@ def generator_view(request):
     gigachat_tokens_used = request.session.get('gigachat_tokens_used', 0)
     openai_tokens_limit = request.session.get('openai_tokens_limit', 0)
     openai_tokens_used = request.session.get('openai_tokens_used', 0)
+    # Список URL изображений (поддержка нескольких при перегенерации)
+    image_urls = [u.strip() for u in (image_url or '').split('|') if u and u.strip()] if image_url else []
     
     return render(request, 'generator/gigagenerator.html', {
         'form': form, 
         'result': result, 
         'image_url': image_url, 
+        'image_urls': image_urls,
         'limit_reached': limit_reached,
         'is_demo': is_demo,
         'token': token,
@@ -511,7 +514,7 @@ def generate_image_from_text(request):
                         with open(full_path, "wb") as f:
                             f.write(image_bytes)
                         
-                        image_url = settings.MEDIA_URL + filename
+                        image_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
                         
                         # Обновляем изображение в существующей записи
                         update_generation_image(request, topic or result_text[:50], image_url)
@@ -634,7 +637,7 @@ def regenerate_image(request):
                         with open(full_path, "wb") as f:
                             f.write(image_bytes)
                         
-                        image_url = settings.MEDIA_URL + filename
+                        image_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
                         print(f"Изображение сохранено локально: {image_url}")
                         print(f"Размер файла: {len(image_bytes)} байт")
                         
@@ -700,7 +703,7 @@ def regenerate_image(request):
                         image_bytes = base64.b64decode(image_data)
                         with open(full_path, "wb") as f:
                             f.write(image_bytes)
-                        image_url = settings.MEDIA_URL + filename
+                        image_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
                         print(f"Изображение сохранено локально: {image_url}")
                         
                         # Обновляем изображение в существующей записи
