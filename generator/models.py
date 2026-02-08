@@ -293,7 +293,8 @@ class TemporaryAccessToken(models.Model):
     
     def consume_gigachat_tokens(self, tokens_count):
         """
-        Увеличивает счётчик использованных токенов GigaChat
+        Увеличивает счётчик использованных токенов GigaChat.
+        Для скрытых (HIDDEN_*) и DEVELOPER токенов использование не считается.
         
         Args:
             tokens_count (int): Количество использованных токенов
@@ -301,6 +302,8 @@ class TemporaryAccessToken(models.Model):
         Returns:
             bool: True если успешно, False если превышен лимит
         """
+        if self.token_type in ('HIDDEN_14D', 'HIDDEN_30D', 'DEVELOPER', 'UNLIMITED'):
+            return True  # не считаем для скрытых, разработчика и безлимита
         if self.gigachat_tokens_limit == -1:
             # Безлимит - просто увеличиваем счётчик
             self.gigachat_tokens_used += tokens_count
@@ -316,7 +319,8 @@ class TemporaryAccessToken(models.Model):
     
     def consume_openai_tokens(self, tokens_count):
         """
-        Увеличивает счётчик использованных токенов OpenAI
+        Увеличивает счётчик использованных токенов OpenAI.
+        Для скрытых (HIDDEN_*) и DEVELOPER использование не считается.
         
         Args:
             tokens_count (int): Количество использованных токенов
@@ -324,6 +328,8 @@ class TemporaryAccessToken(models.Model):
         Returns:
             bool: True если успешно, False если превышен лимит
         """
+        if self.token_type in ('HIDDEN_14D', 'HIDDEN_30D', 'DEVELOPER'):
+            return True  # не считаем для скрытых и разработчика
         if self.openai_tokens_limit == -1:
             # Безлимит - просто увеличиваем счётчик
             self.openai_tokens_used += tokens_count
