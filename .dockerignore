@@ -55,8 +55,7 @@ pytest.ini
 htmlcov/
 .coverage
 
-# Manual token generator (не деплоим)
-manual_token_generator.py
+# Сгенерированные файлы со ссылками (не нужны в образе)
 tokens_*.txt
 
 # Deployment scripts
