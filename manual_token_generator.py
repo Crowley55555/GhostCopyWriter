@@ -26,10 +26,20 @@
 Быстрая генерация из командной строки:
     python manual_token_generator.py --quick DEMO_FREE
     python manual_token_generator.py --quick DEVELOPER
+
+Для генерации ссылок на продакшен (сервер):
+    На сервере (в контейнере Django):
+        docker compose -f docker-compose.production.yml exec django python manual_token_generator.py --quick DEVELOPER
+    Локально с URL продакшена (нужна доступная БД проекта):
+        set SITE_URL=https://ghostwriter.ru
+        python manual_token_generator.py --quick DEMO_FREE
+    Или явно:
+        python manual_token_generator.py --site-url https://ghostwriter.ru --quick DEVELOPER
 """
 
 import os
 import sys
+import argparse
 import django
 from datetime import timedelta
 from pathlib import Path
@@ -37,6 +47,14 @@ from pathlib import Path
 # Настройка Django окружения
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
+
+# Подгружаем .env до Django, чтобы SITE_URL и др. попали в os.environ
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / '.env')
+except ImportError:
+    pass
+
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ghostwriter.settings')
 django.setup()
 
@@ -46,11 +64,22 @@ from django.conf import settings
 from generator.models import TemporaryAccessToken
 
 
+def _default_site_url():
+    """URL сайта: переменная окружения → настройки Django → localhost."""
+    return (
+        os.environ.get('SITE_URL') or
+        getattr(settings, 'SITE_URL', None) or
+        'http://localhost:8000'
+    ).rstrip('/')
+
+
 class TokenGenerator:
     """Генератор токенов для ручной выдачи"""
     
-    def __init__(self):
-        self.site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+    def __init__(self, site_url=None):
+        self.site_url = (site_url or _default_site_url()).rstrip('/')
+        if 'localhost' in self.site_url or '127.0.0.1' in self.site_url:
+            print("💡 Ссылки строятся от localhost. Чтобы получить ссылки на сервер, задайте переменную окружения SITE_URL или используйте --site-url, например:\n   set SITE_URL=https://85.208.86.148\n   python manual_token_generator.py --site-url https://85.208.86.148 --quick DEMO_FREE\n")
         from generator.tariffs import TARIFFS
         self.available_tariffs = TARIFFS
     
@@ -248,9 +277,9 @@ def print_token_info(token, url):
         print("💡 Установите pyperclip для автокопирования: pip install pyperclip")
 
 
-def interactive_mode():
+def interactive_mode(site_url=None):
     """Интерактивный режим"""
-    generator = TokenGenerator()
+    generator = TokenGenerator(site_url=site_url)
     
     # Маппинг выбора на тип токена
     token_type_map = {
@@ -439,40 +468,59 @@ def interactive_mode():
             input("\nНажмите Enter для продолжения...")
 
 
-def quick_generate(token_type='DEMO_FREE'):
+def quick_generate(token_type='DEMO_FREE', site_url=None):
     """
     Быстрая генерация одного токена (для скриптов)
     
     Args:
         token_type (str): Тип токена (по умолчанию DEMO_FREE)
+        site_url (str): Базовый URL сайта (для ссылок). По умолчанию — из SITE_URL или настроек Django.
     
     Returns:
         str: URL токена
     """
-    generator = TokenGenerator()
+    generator = TokenGenerator(site_url=site_url)
     token, url = generator.generate_token(token_type)
     print(url)
     return url
 
 
 if __name__ == '__main__':
-    # Проверяем аргументы командной строки
-    if len(sys.argv) > 1:
-        if sys.argv[1] == '--quick':
-            # Быстрая генерация (по умолчанию DEMO_FREE)
-            token_type = sys.argv[2] if len(sys.argv) > 2 else 'DEMO_FREE'
-            quick_generate(token_type)
-        elif sys.argv[1] == '--help':
-            print(__doc__)
-            print("\nДоступные типы токенов:")
-            from generator.tariffs import TARIFFS
-            for token_type, tariff in TARIFFS.items():
-                print(f"  {token_type}: {tariff['name']} - {tariff['description']}")
-            print("\nПримеры использования:")
-            print("  python manual_token_generator.py --quick DEMO_FREE")
-            print("  python manual_token_generator.py --quick DEVELOPER")
-        else:
-            print("Неизвестная команда. Используйте --help для справки.")
+    parser = argparse.ArgumentParser(
+        description='Генератор токенов Ghostwriter. Ссылки строятся от SITE_URL или --site-url.'
+    )
+    parser.add_argument(
+        '--site-url',
+        default=None,
+        metavar='URL',
+        help='Базовый URL сайта для ссылок (например https://ghostwriter.ru). По умолчанию: SITE_URL из окружения или настроек Django.'
+    )
+    parser.add_argument(
+        '--quick',
+        metavar='TYPE',
+        nargs='?',
+        const='DEMO_FREE',
+        default=None,
+        help='Быстрая генерация одного токена. Тип: DEMO_FREE, BASIC, PRO, UNLIMITED, HIDDEN_14D, HIDDEN_30D, DEVELOPER.'
+    )
+    parser.add_argument('--help-all', action='store_true', help='Показать справку и список тарифов')
+    args, unknown = parser.parse_known_args()
+
+    site_url = args.site_url or _default_site_url()
+
+    if args.help_all:
+        print(__doc__)
+        print("\nДоступные типы токенов:")
+        from generator.tariffs import TARIFFS
+        for token_type, tariff in TARIFFS.items():
+            print(f"  {token_type}: {tariff['name']} - {tariff['description']}")
+        print("\nПримеры:")
+        print("  python manual_token_generator.py --quick DEMO_FREE")
+        print("  python manual_token_generator.py --site-url https://ghostwriter.ru --quick DEVELOPER")
+        print("  python manual_token_generator.py   # интерактивный режим")
+        sys.exit(0)
+
+    if args.quick is not None:
+        quick_generate(token_type=args.quick, site_url=site_url)
     else:
-        # Интерактивный режим
-        interactive_mode()
+        interactive_mode(site_url=site_url)
