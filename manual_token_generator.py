@@ -47,6 +47,14 @@ from pathlib import Path
 # Настройка Django окружения
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
+
+# Подгружаем .env до Django, чтобы SITE_URL и др. попали в os.environ
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / '.env')
+except ImportError:
+    pass
+
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ghostwriter.settings')
 django.setup()
 
@@ -70,6 +78,8 @@ class TokenGenerator:
     
     def __init__(self, site_url=None):
         self.site_url = (site_url or _default_site_url()).rstrip('/')
+        if 'localhost' in self.site_url or '127.0.0.1' in self.site_url:
+            print("💡 Ссылки строятся от localhost. Чтобы получить ссылки на сервер, задайте переменную окружения SITE_URL или используйте --site-url, например:\n   set SITE_URL=https://85.208.86.148\n   python manual_token_generator.py --site-url https://85.208.86.148 --quick DEMO_FREE\n")
         from generator.tariffs import TARIFFS
         self.available_tariffs = TARIFFS
     
