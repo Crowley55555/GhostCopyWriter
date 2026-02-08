@@ -2,6 +2,24 @@ from django import template
 
 register = template.Library()
 
+
+@register.filter
+def media_urls_absolute(value, request):
+    """Преобразует относительные URL изображений в абсолютные (для отображения и скачивания)."""
+    if not value or not request:
+        return value
+    parts = [p.strip() for p in value.split('|') if p.strip()]
+    if not parts:
+        return value
+    result = []
+    for part in parts:
+        if part.startswith('http://') or part.startswith('https://'):
+            result.append(part)
+        else:
+            result.append(request.build_absolute_uri(part))
+    return '|'.join(result)
+
+
 @register.filter
 def split(value, delimiter):
     """Разделяет строку по разделителю"""

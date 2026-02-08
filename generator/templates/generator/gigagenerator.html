@@ -349,7 +349,7 @@
                         <div class="spinner-border text-primary" role="status">
                           <span class="visually-hidden">Генерация...</span>
                         </div>
-                        <div class="mt-2 fw-semibold">Контент генерируется...</div>
+                        <div class="mt-2 fw-semibold" id="generationStatusText">Генерация текста...</div>
                     </div>
                 </div>
             </div>
@@ -480,83 +480,139 @@ const btn = document.getElementById('generateBtn');
 const btnContent = document.getElementById('generateBtnContent');
 const statusBlock = document.getElementById('generationStatus');
 const resultBlock = document.getElementById('generationResult');
+const TEXT_FETCH_TIMEOUT = 120000;  // 2 мин на текст
+const IMAGE_FETCH_TIMEOUT = 300000; // 5 мин на изображение
+
+function fetchWithTimeout(url, options, ms) {
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(id));
+}
+
 form.addEventListener('submit', function(e) {
     e.preventDefault();
+    const wantImage = document.getElementById('generateImageCheckbox').checked;
     btn.disabled = true;
     btnContent.style.display = 'none';
     statusBlock.style.display = '';
+    const statusTextEl = document.getElementById('generationStatusText');
+    if (statusTextEl) statusTextEl.textContent = 'Генерация текста...';
     resultBlock.innerHTML = '';
     const formData = new FormData(form);
+    // Пошаговый режим: сначала только текст, потом изображение отдельным запросом
+    if (wantImage) {
+        formData.set('generate_image', 'off');
+    }
     showToast('Генерация текста...', 'info');
-    fetch(window.location.pathname, {
+    fetchWithTimeout(window.location.pathname, {
         method: 'POST',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: formData
-    })
+    }, TEXT_FETCH_TIMEOUT)
     .then(resp => resp.json())
     .then(data => {
         btn.disabled = false;
         btnContent.style.display = '';
         statusBlock.style.display = 'none';
         if (data.success) {
-            // Обновляем информацию о токенах, если она пришла в ответе
             if (data.gigachat_tokens_used !== undefined) {
                 const gigachatUsed = document.getElementById('gigachatUsed');
-                if (gigachatUsed) {
-                    gigachatUsed.textContent = Math.round(data.gigachat_tokens_used).toLocaleString('ru-RU');
-                }
+                if (gigachatUsed) gigachatUsed.textContent = Math.round(data.gigachat_tokens_used).toLocaleString('ru-RU');
             }
             if (data.openai_tokens_used !== undefined) {
                 const openaiUsed = document.getElementById('openaiUsed');
-                if (openaiUsed) {
-                    openaiUsed.textContent = Math.round(data.openai_tokens_used).toLocaleString('ru-RU');
-                }
+                if (openaiUsed) openaiUsed.textContent = Math.round(data.openai_tokens_used).toLocaleString('ru-RU');
             }
-            
-            showToast('Текст успешно сгенерирован!', 'success');
-            
-            // Если изображение должно генерироваться, показываем уведомления
-            if (data.generate_image_flag) {
-                showToast('Генерация промпта для изображения...', 'info');
-                setTimeout(() => showToast('Генерация изображения...', 'info'), 800);
+            showToast('Текст сгенерирован', 'success');
+            var hasImage = data.image_url && (typeof data.image_url === 'string') && data.image_url.length > 0;
+            var colClass = (hasImage || wantImage) ? 'col-md-6' : 'col-md-12';
+            var generateImageBtn = (!hasImage && !wantImage) ? '<button id="generateImageBtn" class="btn btn-outline-info mt-3 w-100" type="button"><i class="bi bi-image me-2"></i>Сгенерировать изображение</button>' : '';
+            var esc = (function(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); });
+            var textCardHtml = '<div class="row mt-5"><div class="' + colClass + ' mb-4"><div class="card shadow border-0 h-100"><div class="card-header bg-success bg-gradient text-white"><h5 class="mb-0"><i class="bi bi-file-text me-2"></i>Сгенерированный текст</h5></div><div class="card-body"><div class="auto-resize-textarea" style="white-space: pre-line;">' + esc(data.result) + '</div><button id="regenTextBtn" class="btn btn-outline-primary mt-3 w-100" type="button">Перегенерировать текст</button>' + generateImageBtn + '</div></div></div>';
+            if (hasImage) {
+                var imgSrc = data.image_url.replace(/"/g, '&quot;');
+                textCardHtml += '<div class="col-md-6 mb-4 text-center"><div class="card shadow border-0 h-100"><div class="card-header bg-info bg-gradient text-white"><h5 class="mb-0"><i class="bi bi-image me-2"></i>Сгенерированное изображение</h5></div><div class="card-body" id="generatedImagesCardBody"><img src="' + imgSrc + '" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image d-block mb-3" style="max-height: 320px; object-fit: contain;"><button id="regenImageBtn" class="btn btn-outline-info mt-3 w-100" type="button">Перегенерировать изображение</button></div></div></div>';
             }
-            
-            let html = '<div class="row mt-5">';
-            if (data.result) {
-                // Добавляем кнопку для генерации изображения, если оно не было сгенерировано
-                const generateImageBtn = data.generate_image_flag ? '' : 
-                    `<button id=\"generateImageBtn\" class=\"btn btn-outline-info mt-3 w-100\" type=\"button\"><i class=\"bi bi-image me-2\"></i>Сгенерировать изображение</button>`;
-                
-                html += `<div class=\"col-md-${data.image_url ? '6' : '12'} mb-4\"><div class=\"card shadow border-0 h-100\"><div class=\"card-header bg-success bg-gradient text-white\"><h5 class=\"mb-0\"><i class=\"bi bi-file-text me-2\"></i>Сгенерированный текст</h5></div><div class=\"card-body\"><div class=\"auto-resize-textarea\" style=\"white-space: pre-line;\">${data.result}</div><button id=\"regenTextBtn\" class=\"btn btn-outline-primary mt-3 w-100\" type=\"button\">Перегенерировать текст</button>${generateImageBtn}</div></div></div>`;
+            if (wantImage && data.result && !hasImage) {
+                textCardHtml += '<div class="col-md-6 mb-4 text-center"><div class="card shadow border-0 h-100"><div class="card-header bg-info bg-gradient text-white"><h5 class="mb-0"><i class="bi bi-image me-2"></i>Сгенерированное изображение</h5></div><div class="card-body" id="generatedImagesCardBody"><div class="py-5"><div class="spinner-border text-info mb-2" role="status"></div><div class="fw-semibold">Генерация изображения...</div></div><button id="regenImageBtn" class="btn btn-outline-info mt-3 w-100 d-none" type="button">Перегенерировать изображение</button></div></div></div>';
             }
-            if (data.image_url) {
-                setTimeout(() => showToast('Изображение успешно сгенерировано!', 'success'), 1800);
-                const imgSrc = (typeof data.image_url === 'string' && data.image_url) ? data.image_url : '';
-                if (imgSrc) {
-                    html += `<div class="col-md-6 mb-4 text-center"><div class="card shadow border-0 h-100"><div class="card-header bg-info bg-gradient text-white"><h5 class="mb-0"><i class="bi bi-image me-2"></i>Сгенерированное изображение</h5></div><div class="card-body" id="generatedImagesCardBody"><img src="${imgSrc.replace(/"/g, '&quot;')}" alt="AI generated image" class="img-fluid rounded shadow-sm generated-image d-block mb-3" style="max-height: 320px; object-fit: contain;"><button id="regenImageBtn" class="btn btn-outline-info mt-3 w-100" type="button">Перегенерировать изображение</button></div></div></div>`;
-                }
+            textCardHtml += '</div>';
+            resultBlock.innerHTML = textCardHtml;
+            if (wantImage && data.result && !hasImage) {
+                statusBlock.style.display = '';
+                if (statusTextEl) statusTextEl.textContent = 'Генерация изображения...';
+                showToast('Генерация изображения...', 'info');
+                var imgForm = new FormData();
+                imgForm.append('topic', formData.get('topic') || '');
+                imgForm.append('result_text', data.result);
+                imgForm.append('csrfmiddlewaretoken', formData.get('csrfmiddlewaretoken'));
+                fetchWithTimeout('/generate-image-from-text/', {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: imgForm
+                }, IMAGE_FETCH_TIMEOUT)
+                .then(function(r) { return r.json(); })
+                .then(function(imgData) {
+                    statusBlock.style.display = 'none';
+                    if (imgData.success && imgData.image_url) {
+                        if (imgData.gigachat_tokens_used !== undefined) {
+                            var gu = document.getElementById('gigachatUsed');
+                            if (gu) gu.textContent = Math.round(imgData.gigachat_tokens_used).toLocaleString('ru-RU');
+                        }
+                        if (imgData.openai_tokens_used !== undefined) {
+                            var ou = document.getElementById('openaiUsed');
+                            if (ou) ou.textContent = Math.round(imgData.openai_tokens_used).toLocaleString('ru-RU');
+                        }
+                        showToast('Изображение сгенерировано', 'success');
+                        var body = document.getElementById('generatedImagesCardBody');
+                        if (body) {
+                            body.querySelector('.py-5') && body.querySelector('.py-5').remove();
+                            var img = document.createElement('img');
+                            img.src = imgData.image_url;
+                            img.alt = 'AI generated image';
+                            img.className = 'img-fluid rounded shadow-sm generated-image d-block mb-3';
+                            img.style.maxHeight = '320px';
+                            img.style.objectFit = 'contain';
+                            var regenBtn = body.querySelector('#regenImageBtn');
+                            if (regenBtn) { regenBtn.classList.remove('d-none'); body.insertBefore(img, regenBtn); }
+                            else body.appendChild(img);
+                        }
+                    } else {
+                        showToast(imgData.error || 'Ошибка генерации изображения', 'danger');
+                        var body = document.getElementById('generatedImagesCardBody');
+                        if (body && body.querySelector('.py-5')) {
+                            body.querySelector('.py-5').innerHTML = '<div class="alert alert-danger mb-0">' + (imgData.error || 'Ошибка') + '</div>';
+                        }
+                    }
+                })
+                .catch(function() {
+                    statusBlock.style.display = 'none';
+                    showToast('Таймаут или ошибка при генерации изображения', 'danger');
+                    var body = document.getElementById('generatedImagesCardBody');
+                    if (body && body.querySelector('.py-5')) {
+                        body.querySelector('.py-5').innerHTML = '<div class="alert alert-danger mb-0">Не удалось сгенерировать изображение. Попробуйте нажать «Сгенерировать изображение» позже.</div>';
+                    }
+                    var rb = body && body.querySelector('#regenImageBtn');
+                    if (rb) rb.classList.remove('d-none');
+                });
             }
-            html += '</div>';
-            resultBlock.innerHTML = html;
         } else {
             showToast(data.error || 'Ошибка генерации контента', 'danger');
-            let errorHtml = `<div class='alert alert-danger mt-4'>Ошибка: ${data.error || 'Не удалось сгенерировать контент.'}</div>`;
+            var errHtml = '<div class="alert alert-danger mt-4">Ошибка: ' + (data.error || 'Не удалось сгенерировать контент.') + '</div>';
             if (data.form_errors) {
-                errorHtml += '<ul class="mt-2">';
-                for (const [field, errors] of Object.entries(data.form_errors)) {
-                    errorHtml += `<li><b>${field}</b>: ${errors.join(', ')}</li>`;
-                }
-                errorHtml += '</ul>';
+                errHtml += '<ul class="mt-2">';
+                for (var field in data.form_errors) { errHtml += '<li><b>' + field + '</b>: ' + (data.form_errors[field] || []).join(', ') + '</li>'; }
+                errHtml += '</ul>';
             }
-            resultBlock.innerHTML = errorHtml;
+            resultBlock.innerHTML = errHtml;
         }
     })
-    .catch(() => {
+    .catch(function(err) {
         btn.disabled = false;
         btnContent.style.display = '';
         statusBlock.style.display = 'none';
-        showToast('Ошибка: Не удалось выполнить генерацию изображения.', 'danger');
-        resultBlock.innerHTML = `<div class='alert alert-danger mt-4'>Ошибка: Не удалось выполнить генерацию.</div>`;
+        showToast(err && err.name === 'AbortError' ? 'Превышено время ожидания. Попробуйте снова.' : 'Ошибка при генерации.', 'danger');
+        resultBlock.innerHTML = '<div class="alert alert-danger mt-4">Не удалось выполнить запрос. Проверьте сеть или попробуйте позже.</div>';
     });
 });
 
@@ -596,13 +652,13 @@ document.addEventListener('click', function(e) {
         formData.append('result_text', resultText.textContent.trim());
         formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
         
-        fetch('/generate-image-from-text/', {
+        fetchWithTimeout('/generate-image-from-text/', {
             method: 'POST',
             body: formData,
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
             }
-        })
+        }, IMAGE_FETCH_TIMEOUT)
         .then(response => response.json())
         .then(data => {
             btn.disabled = false;
