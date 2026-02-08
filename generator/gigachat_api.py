@@ -853,30 +853,41 @@ def download_image(giga_client, file_id):
                 print(f"Ошибка скачивания по ссылке: {ex}")
         
         image_response = giga_client.get_image(file_id)
-        
+        print(f"get_image вернул: type={type(image_response)}, has content={getattr(image_response, 'content', 'N/A') is not None if image_response else False}")
+
         if image_response and hasattr(image_response, 'content'):
             content = image_response.content
-            
-            # Проверяем тип content и обрабатываем соответственно
-            if isinstance(content, str):
-                if content.startswith('data:image'):
-                    return content
-                try:
+            print(f"content: type={type(content)}, len={len(content) if content is not None else 0}")
+
+            try:
+                # Проверяем тип content и обрабатываем соответственно
+                if isinstance(content, str):
+                    if content.startswith('data:image'):
+                        print("Изображение получено от GigaChat (str data:image)")
+                        return content
                     if len(content) > 1000:
+                        print(f"Изображение получено от GigaChat (str), размер: {len(content)}")
                         return f"data:image/jpeg;base64,{content}"
+                    print(f"Строка content слишком короткая: {len(content)}")
                     return None
-                except Exception as e:
-                    print(f"Ошибка при обработке base64: {e}")
-                    return None
-            elif isinstance(content, bytes):
-                import base64
-                image_base64 = base64.b64encode(content).decode('utf-8')
-                return f"data:image/jpeg;base64,{image_base64}"
-            else:
-                print(f"Неизвестный тип content: {type(content)}")
+                if isinstance(content, bytes):
+                    import base64
+                    image_base64 = base64.b64encode(content).decode('utf-8')
+                    print(f"Изображение получено от GigaChat (bytes), размер base64: {len(image_base64)}")
+                    return f"data:image/jpeg;base64,{image_base64}"
+                # Возможно content — dict/list (ответ API в другом формате)
+                if hasattr(content, '__iter__') and not isinstance(content, (str, bytes)):
+                    print(f"content итерируемый, не str/bytes: {type(content)}")
+                else:
+                    print(f"Неизвестный тип content: {type(content)}")
+                return None
+            except Exception as e:
+                print(f"Ошибка при обработке content: {e}")
+                import traceback
+                traceback.print_exc()
                 return None
         else:
-            print("Пустой ответ при скачивании изображения")
+            print("Пустой ответ при скачивании изображения или нет атрибута content")
             return None
             
     except Exception as e:
