@@ -1181,6 +1181,16 @@ html[data-theme="light"] .header-controls {
     opacity: 1;
 }
 
+/* Киберпанк (светлая) тема: блок «Лимиты токенов» на /profile/ — контрастный фон, читаемый текст */
+html[data-theme="light"] .profile-token-limits {
+    background: #e9ecef !important;
+    color: #212529 !important;
+}
+html[data-theme="light"] .profile-token-limits .badge,
+html[data-theme="light"] .profile-token-limits strong {
+    color: inherit;
+}
+
 /* Удалены конфликтующие стили для .header-controls .datetime-display, .datetime-display i, .datetime-display span */
 
 /* Анимации для заголовков */
