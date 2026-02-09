@@ -1109,6 +1109,36 @@ def token_auth_view(request, token):
         access_token.current_ip = request.META.get('REMOTE_ADDR')
         access_token.save()
         
+        # Привязка к пользователю Django по telegram_user_id (для сохранения истории)
+        # Демо-токены из manual_token_generator (без telegram_user_id) остаются без привязки
+        if access_token.telegram_user_id and not request.user.is_authenticated:
+            from django.contrib.auth.models import User
+            from django.contrib.auth import login
+            import hashlib
+            
+            # Создаём уникальное имя пользователя на основе telegram_user_id
+            username = f"tg_{access_token.telegram_user_id}"
+            
+            # Ищем или создаём пользователя Django
+            user, created = User.objects.get_or_create(
+                username=username,
+                defaults={
+                    'email': f"tg{access_token.telegram_user_id}@ghostwriter.local",  # Фиктивный email
+                    'is_active': True,
+                    'is_staff': False,
+                    'is_superuser': False,
+                }
+            )
+            
+            # Если пользователь только что создан, устанавливаем случайный пароль
+            # (вход только по токену, пароль не используется)
+            if created:
+                user.set_unusable_password()
+                user.save()
+            
+            # Авторизуем пользователя в Django (для привязки генераций)
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+        
         messages.success(
             request,
             f'Добро пожаловать! Токен типа: {access_token.get_token_type_display()}'
@@ -1448,6 +1478,7 @@ def api_create_token(request):
             }, status=400)
         
         # ЗАЩИТА ОТ МУЛЬТИАККАУНТОВ
+        tariff_changed = False  # Флаг смены тарифа
         if telegram_user_id:
             from django.db.models import Q
             # Проверяем существующие активные токены для этого пользователя
@@ -1479,7 +1510,19 @@ def api_create_token(request):
                     }, status=409)
             
             # Для платных тарифов - проверяем активные подписки
-            elif token_type in ['BASIC', 'PRO', 'UNLIMITED']:
+            if token_type in ['BASIC', 'PRO', 'UNLIMITED']:
+                # Если покупается платный тариф, а есть активный DEMO_FREE - деактивируем демо
+                now_check = timezone.now()
+                active_demo = existing_tokens.filter(
+                    token_type='DEMO_FREE'
+                ).filter(
+                    Q(expires_at__isnull=True) | Q(expires_at__gte=now_check)
+                )
+                if active_demo.exists():
+                    # Деактивируем все активные демо-токены при покупке платного тарифа
+                    active_demo.update(is_active=False)
+                
+                # Проверяем активные платные подписки
                 paid_tokens = existing_tokens.filter(
                     token_type__in=['BASIC', 'PRO', 'UNLIMITED'],
                     subscription_start__isnull=False
@@ -1493,18 +1536,47 @@ def api_create_token(request):
                 if active_subscriptions.exists():
                     # Находим активную подписку
                     active_sub = active_subscriptions.order_by('-created_at').first()
-                    site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
-                    existing_url = f"{site_url}/auth/token/{active_sub.token}/"
                     
-                    return JsonResponse({
-                        'error': 'Active subscription exists',
-                        'message': f'У вас уже есть активная подписка ({active_sub.get_token_type_display()}). Дождитесь окончания текущей подписки или отмените её.',
-                        'existing_token_url': existing_url,
-                        'subscription_type': active_sub.token_type,
-                        'next_renewal': active_sub.next_renewal.isoformat() if active_sub.next_renewal else None
-                    }, status=409)
+                    # Если запрашивается тот же тариф - продлеваем существующий токен
+                    if active_sub.token_type == token_type:
+                        now = timezone.now()
+                        # Продлеваем подписку
+                        if tariff.get('is_subscription'):
+                            active_sub.next_renewal = now + timedelta(days=tariff['duration_days'])
+                            if not active_sub.subscription_start:
+                                active_sub.subscription_start = now
+                        # Обновляем лимиты (на случай если тариф изменился)
+                        active_sub.gigachat_tokens_limit = tariff['gigachat_tokens']
+                        active_sub.openai_tokens_limit = tariff['openai_tokens']
+                        # Обновляем expires_at если не бессрочный
+                        if tariff['duration_days'] is not None:
+                            active_sub.expires_at = now + timedelta(days=tariff['duration_days'])
+                        active_sub.is_active = True
+                        active_sub.save()
+                        
+                        site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+                        token_url = f"{site_url}/auth/token/{active_sub.token}/"
+                        
+                        return JsonResponse({
+                            'token': str(active_sub.token),
+                            'token_type': active_sub.token_type,
+                            'expires_at': active_sub.expires_at.isoformat() if active_sub.expires_at else None,
+                            'url': token_url,
+                            'created_at': active_sub.created_at.isoformat(),
+                            'is_active': active_sub.is_active,
+                            'gigachat_tokens_limit': active_sub.gigachat_tokens_limit,
+                            'openai_tokens_limit': active_sub.openai_tokens_limit,
+                            'renewed': True  # Флаг что токен был продлён
+                        }, status=200)
+                    else:
+                        # Другой тариф - деактивируем старый и создаём новый (смена тарифа)
+                        # История сохранится, так как telegram_user_id тот же и пользователь Django тот же
+                        active_sub.is_active = False
+                        active_sub.save(update_fields=['is_active'])
+                        tariff_changed = True  # Отмечаем что произошла смена тарифа
+                        # Продолжаем создание нового токена ниже (с тем же telegram_user_id)
         
-        # Создаем токен
+        # Создаем новый токен
         now = timezone.now()
         
         # Определяем expires_at
@@ -1549,6 +1621,10 @@ def api_create_token(request):
             'gigachat_tokens_limit': token.gigachat_tokens_limit,
             'openai_tokens_limit': token.openai_tokens_limit
         }
+        
+        # Добавляем флаг смены тарифа если была смена
+        if tariff_changed:
+            response_data['tariff_changed'] = True
         
         return JsonResponse(response_data, status=201)
     
