@@ -10,7 +10,7 @@
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from generator.models import TemporaryAccessToken
+from generator.models import TemporaryAccessToken, Generation
 
 
 class Command(BaseCommand):
@@ -121,6 +121,35 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.WARNING(
                         f'\n⚠️ Старых деактивированных токенов (>{days_old} дней) не найдено'
+                    )
+                )
+            
+            # Удаление генераций демо-токенов (без пользователя) старше N дней
+            old_demo_generations = Generation.objects.filter(
+                user__isnull=True,  # Только генерации без пользователя (демо-токены)
+                created_at__lt=cutoff_date
+            )
+            
+            demo_gen_count = old_demo_generations.count()
+            
+            if demo_gen_count > 0:
+                self.stdout.write(
+                    f'\n📊 Найдено старых генераций демо-токенов (>{days_old} дней): {demo_gen_count}'
+                )
+                
+                if not dry_run:
+                    old_demo_generations.delete()
+                    self.stdout.write(
+                        self.style.SUCCESS(f'🗑️ Удалено генераций демо-токенов: {demo_gen_count}')
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'🔍 [DRY RUN] Будет удалено генераций: {demo_gen_count}')
+                    )
+            else:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f'\n⚠️ Старых генераций демо-токенов (>{days_old} дней) не найдено'
                     )
                 )
         

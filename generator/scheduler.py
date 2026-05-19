@@ -63,10 +63,13 @@ def delete_old_tokens():
     - Деактивированы (is_active=False)
     - Истекли более 90 дней назад
     
+    Также удаляет генерации без пользователя (user=None) старше 90 дней,
+    которые были созданы демо-токенами из manual_token_generator.
+    
     Это помогает поддерживать базу данных в чистоте.
     """
     try:
-        from generator.models import TemporaryAccessToken
+        from generator.models import TemporaryAccessToken, Generation
         
         # Вычисляем дату отсечки (90 дней назад)
         cutoff_date = timezone.now() - timedelta(days=90)
@@ -79,16 +82,30 @@ def delete_old_tokens():
             expires_at__isnull=False  # Исключаем бессрочные
         )
         
-        count = old_tokens.count()
+        token_count = old_tokens.count()
         
-        if count > 0:
+        if token_count > 0:
             # Удаляем их
             old_tokens.delete()
-            logger.info(f"🗑️ Автоматическая очистка: удалено {count} старых токенов (>90 дней)")
+            logger.info(f"🗑️ Автоматическая очистка: удалено {token_count} старых токенов (>90 дней)")
         else:
             logger.debug("🗑️ Автоматическая очистка: старых токенов не найдено")
         
-        return count
+        # Удаляем генерации без пользователя (демо-токены) старше 90 дней
+        old_generations = Generation.objects.filter(
+            user__isnull=True,  # Только генерации без пользователя (демо-токены)
+            created_at__lt=cutoff_date
+        )
+        
+        generation_count = old_generations.count()
+        
+        if generation_count > 0:
+            old_generations.delete()
+            logger.info(f"🗑️ Автоматическая очистка: удалено {generation_count} старых генераций демо-токенов (>90 дней)")
+        else:
+            logger.debug("🗑️ Автоматическая очистка: старых генераций демо-токенов не найдено")
+        
+        return token_count + generation_count
         
     except Exception as e:
         logger.error(f"❌ Ошибка при удалении старых токенов: {e}")
