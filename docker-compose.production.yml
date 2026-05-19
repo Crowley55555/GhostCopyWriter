@@ -205,8 +205,9 @@ services:
   nginx:
     image: nginx:alpine
     container_name: ghostwriter-nginx-prod
+    # Приложение доступно на хосте: http://<server>:8010
     ports:
-      - "80:80"
+      - "8010:80"
       - "443:443"
     volumes:
       - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
