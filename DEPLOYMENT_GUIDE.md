@@ -1,7 +1,7 @@
 # Руководство по развёртыванию Ghostwriter в Production
 
-**Версия:** 2.3  
-**Дата:** февраль 2026  
+**Версия:** 2.4  
+**Дата:** май 2026  
 **Статус:** Production Ready
 
 ---
@@ -9,17 +9,18 @@
 ## Содержание
 
 1. [Архитектура](#архитектура)
-2. [Требования к серверу](#требования-к-серверу)
-3. [Подготовка: ключи и токены](#подготовка-ключи-и-токены)
-4. [Пошаговый деплой на облачном сервере](#пошаговый-деплой-на-облачном-сервере)
-5. [Настройка домена и SSL](#настройка-домена-и-ssl)
-6. [Обновление проекта с Git](#обновление-проекта-с-git)
-7. [Переменные окружения](#переменные-окружения)
-8. [Миграции и команды Django](#миграции-и-команды-django)
-9. [Деплой Flask (зарубежный сервер)](#деплой-flask-зарубежный-сервер)
-10. [Резервное копирование](#резервное-копирование)
-11. [Устранение неполадок](#устранение-неполадок)
-12. [Чеклист перед запуском](#чеклист-перед-запуском)
+2. [Порты production](#порты-production)
+3. [Требования к серверу](#требования-к-серверу)
+4. [Подготовка: ключи и токены](#подготовка-ключи-и-токены)
+5. [Пошаговый деплой на облачном сервере](#пошаговый-деплой-на-облачном-сервере)
+6. [Настройка домена и SSL](#настройка-домена-и-ssl)
+7. [Обновление проекта с Git](#обновление-проекта-с-git)
+8. [Переменные окружения](#переменные-окружения)
+9. [Миграции и команды Django](#миграции-и-команды-django)
+10. [Деплой Flask (зарубежный сервер)](#деплой-flask-зарубежный-сервер)
+11. [Резервное копирование](#резервное-копирование)
+12. [Устранение неполадок](#устранение-неполадок)
+13. [Чеклист перед запуском](#чеклист-перед-запуском)
 
 ---
 
@@ -30,8 +31,9 @@
 │                    ОБЛАЧНЫЙ СЕРВЕР (РФ)                         │
 │  ┌─────────┐  ┌─────────┐  ┌──────────┐  ┌─────────┐          │
 │  │  Nginx  │──│ Django  │──│ Postgres │  │  Redis  │          │
-│  │  :80    │  │  :8000  │  │  :5432   │  │  :6379  │          │
+│  │ :8010*  │  │  :8000  │  │  :5432   │  │  :6379  │          │
 │  │  :443   │  └────┬────┘  └──────────┘  └─────────┘          │
+│  │ (*хост)│                                                    │
 │  └─────────┘       │                                            │
 │                    │  ┌─────────────┐                           │
 │                    └──│ Telegram Bot│  (polling)                 │
@@ -50,7 +52,20 @@
 - **Telegram Bot** — меню (тарифы, токены, техподдержка, отзыв), оплата, выдача ссылок (режим polling).
 - **PostgreSQL** — база данных.
 - **Redis** — кеш.
-- **Nginx** — reverse proxy, SSL, статика.
+- **Nginx** — reverse proxy, SSL, статика. Снаружи приложение доступно на **порту 8010** (HTTP); внутри контейнера Nginx слушает 80, Django — 8000.
+
+---
+
+## Порты production
+
+| Где | Порт | Назначение |
+|-----|------|------------|
+| Хост (сервер) | **8010** | Основной HTTP-доступ к сайту: `http://<IP или домен>:8010` |
+| Хост | **443** | HTTPS (если настроены SSL-сертификаты в `ssl/`) |
+| Docker (Nginx) | 80 | Внутренний порт Nginx, проброшен на хост как 8010 |
+| Docker (Django) | 8000 | Только внутри сети compose; бот обращается как `http://django:8000` |
+
+В `docker-compose.production.yml`: `"8010:80"`. Порт **8000 на хост не публикуется** — это нормально.
 
 ---
 
@@ -61,7 +76,7 @@
 - RAM: 2 GB (рекомендуется 4 GB).
 - CPU: 2 ядра.
 - Диск: 20 GB SSD.
-- Сеть: порты 80 и 443 открыты.
+- Сеть: порт **8010** открыт (основной доступ к приложению); порт **443** — если используете HTTPS.
 
 **Рекомендуемые:** 4 GB RAM, 4 ядра, 50 GB SSD.
 
@@ -110,7 +125,7 @@ openssl rand -hex 32
 
 - [yookassa.ru](https://yookassa.ru/) → Интеграция → Ключи API.
 - → `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`.
-- Webhook URL в кабинете: `https://ВАШ_ДОМЕН/api/payments/yookassa/webhook/`.
+- Webhook URL в кабинете: `https://ВАШ_ДОМЕН/api/payments/yookassa/webhook/` (или с портом, если HTTPS только на 443, а HTTP — на 8010: укажите URL, по которому реально доступен Django снаружи).
 
 ### 7. OpenAI (только для Flask-сервера)
 
@@ -180,7 +195,7 @@ nano .env
 | `TELEGRAM_BOT_TOKEN` | Токен от BotFather |
 | `BOT_USERNAME` | Username бота без @ |
 | `TELEGRAM_WEBHOOK_SECRET` | Секрет (openssl rand -hex 32) |
-| `SITE_URL` | URL сайта без слэша в конце, например `https://yourdomain.com` |
+| `SITE_URL` | URL сайта без слэша в конце, например `http://yourdomain.com:8010` или `https://yourdomain.com` при SSL на 443 |
 | `EXECUTOR_*` | Реквизиты для оферты |
 | `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` | Для приёма платежей |
 
@@ -200,7 +215,9 @@ mkdir -p /opt/ghostwriter/ssl
 
 ```bash
 sudo apt install -y certbot
-# Временно остановите любой сервис на 80 порту
+# Certbot в режиме standalone занимает порт 80 на хосте (не 8010).
+# Остановите контейнеры Ghostwriter или любой другой сервис на порту 80:
+docker compose -f docker-compose.production.yml stop nginx
 sudo certbot certonly --standalone -d yourdomain.com -d www.yourdomain.com --email your@email.com --agree-tos --non-interactive
 sudo cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem /opt/ghostwriter/ssl/cert.pem
 sudo cp /etc/letsencrypt/live/yourdomain.com/privkey.pem /opt/ghostwriter/ssl/key.pem
@@ -270,7 +287,10 @@ docker compose -f docker-compose.production.yml logs -f
 docker compose -f docker-compose.production.yml exec django python manage.py createsuperuser
 ```
 
-Откройте в браузере: `https://yourdomain.com` и `https://yourdomain.com/admin/`.
+Откройте в браузере:
+
+- HTTP (основной порт деплоя): `http://yourdomain.com:8010` и `http://yourdomain.com:8010/admin/`
+- HTTPS (если настроен SSL и открыт порт 443): `https://yourdomain.com` и `https://yourdomain.com/admin/`
 
 ### Шаг 9. Бот
 
@@ -281,7 +301,7 @@ docker compose -f docker-compose.production.yml exec django python manage.py cre
 ## Настройка домена и SSL
 
 1. **DNS:** A-записи для домена и www на IP сервера.
-2. В `.env`: `ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com`, `SITE_URL=https://yourdomain.com`.
+2. В `.env`: `ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com`, `SITE_URL=http://yourdomain.com:8010` (или `https://yourdomain.com`, если сайт отдаётся по HTTPS на 443).
 3. После смены домена или сертификата перезапустите Nginx и при необходимости Django:
 
 ```bash
@@ -297,15 +317,15 @@ docker compose -f docker-compose.production.yml restart django
 
 ### Переход с IP на домен
 
-Пока DNS не обновился, в `.env` можно использовать IP: `SITE_URL=https://85.208.86.148`. Когда домен начнёт открываться (например, ghostcopywriter.ru), переключите ссылки на домен:
+Пока DNS не обновился, в `.env` можно использовать IP с портом: `SITE_URL=http://85.208.86.148:8010`. Когда домен начнёт открываться (например, ghostcopywriter.ru), переключите ссылки на домен:
 
 ```bash
 cd /opt/ghostwriter
-sed -i 's|SITE_URL=.*|SITE_URL=https://ghostcopywriter.ru|' .env
+sed -i 's|SITE_URL=.*|SITE_URL=http://ghostcopywriter.ru:8010|' .env
 docker compose -f docker-compose.production.yml up -d
 ```
 
-Проверьте: `grep SITE_URL .env` — должно быть `SITE_URL=https://ghostcopywriter.ru`. В `nginx.prod.conf` должен быть соответствующий `server_name ghostcopywriter.ru www.ghostcopywriter.ru;`.
+Проверьте: `grep SITE_URL .env` — должно быть `SITE_URL=http://ghostcopywriter.ru:8010` (или `https://...`, если используете только HTTPS). В `nginx.prod.conf` должен быть соответствующий `server_name ghostcopywriter.ru www.ghostcopywriter.ru;`. Сайт проверяйте по `http://ghostcopywriter.ru:8010`.
 
 ---
 
@@ -434,6 +454,12 @@ docker compose -f docker-compose.production.yml config
 - Проверьте, что контейнер `django` в состоянии healthy.
 - Логи Nginx: `docker compose -f docker-compose.production.yml logs nginx`.
 - Проверка Django изнутри сети: `docker compose -f docker-compose.production.yml exec django curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/`.
+- Проверка с хоста через Nginx: `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8010/` (ожидается `200` или `302`).
+
+**Сайт не открывается по адресу без порта**
+
+- Production слушает **8010**, а не 80. Используйте `http://<домен>:8010`, не `http://<домен>/`.
+- Убедитесь, что в firewall/security group открыт порт **8010** (`ufw allow 8010/tcp` и т.п.).
 
 **База недоступна**
 
@@ -477,9 +503,11 @@ docker compose -f docker-compose.production.yml exec django python manage.py sho
 - [ ] Все контейнеры в статусе Up (при необходимости healthy).
 - [ ] Миграции применены (при старте Django или вручную).
 - [ ] Создан суперпользователь.
-- [ ] Сайт открывается по HTTPS, бот в Telegram отвечает на `/start`.
+- [ ] Порт **8010** открыт в firewall; сайт открывается по `http://<домен>:8010` (и по HTTPS на 443, если настроен SSL).
+- [ ] В `.env` указан `SITE_URL` с корректным портом (`:8010` для HTTP).
+- [ ] Бот в Telegram отвечает на `/start`.
 
 ---
 
-**Версия документа:** 2.3  
-**Последнее обновление:** февраль 2026
+**Версия документа:** 2.4  
+**Последнее обновление:** май 2026 — production HTTP на порту **8010**

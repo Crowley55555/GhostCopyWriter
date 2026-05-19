@@ -208,7 +208,6 @@ services:
     # Приложение доступно на хосте: http://<server>:8010
     ports:
       - "8010:80"
-      - "443:443"
     volumes:
       - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
