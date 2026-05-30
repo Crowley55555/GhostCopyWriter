@@ -2,6 +2,8 @@
 
 **Production:** используйте только `docker-compose.production.yml`. Сайт: `https://<сервер>` на порту **443** (не `docker compose up` без `-f` — это dev на порту 8000).
 
+**SSL (первый деплой или новый сервер):** `bash deploy/generate-ssl-ip.sh [IP]` → создаёт `ssl/cert.pem` и `ssl/key.pem`. Подробнее: [ssl/README.md](ssl/README.md).
+
 См. также: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) · [README.md — Deployment](README.md#-deployment)
 
 ---

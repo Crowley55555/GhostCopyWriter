@@ -27,6 +27,7 @@
 - [x] `docker-compose.flask.yml` - Flask микросервис
 - [x] `nginx.prod.conf` - production HTTPS :443, SSL в `ssl/`
 - [x] `deploy/generate-ssl-ip.sh` - самоподписанный сертификат для IP
+- [x] `ssl/README.md` - инструкция по SSL для production
 - [x] `flask_generator/nginx.conf` - Flask конфигурация
 
 ### 5. ✅ Обновление имени Telegram бота

@@ -34,6 +34,13 @@ git pull origin main || git pull origin dev || {
 }
 echo "✅ Изменения получены"
 
+# SSL для Nginx :443 (если сертификатов нет)
+if [ ! -f ssl/cert.pem ] || [ ! -f ssl/key.pem ]; then
+    echo ""
+    echo "🔐 SSL не найден — генерация (deploy/generate-ssl-ip.sh)..."
+    bash deploy/generate-ssl-ip.sh
+fi
+
 # 2. Остановка контейнеров (опционально, можно пропустить для zero-downtime)
 echo ""
 echo "🛑 Шаг 2: Остановка контейнеров..."
@@ -111,7 +118,8 @@ echo "✅ ОБНОВЛЕНИЕ ЗАВЕРШЕНО УСПЕШНО!"
 echo "========================================================================"
 echo ""
 echo "📊 Полезные команды:"
-echo "   Сайт (HTTPS):   https://<server>  (порт 443, см. SITE_URL в .env)"
+echo "   Сайт (HTTPS):   https://<server>  (порт 443, SITE_URL в .env)"
+echo "   SSL:            bash deploy/generate-ssl-ip.sh [IP]"
 echo "   Логи Django:    docker compose -f docker-compose.production.yml logs -f django"
 echo "   Логи Bot:       docker compose -f docker-compose.production.yml logs -f bot"
 echo "   Логи Nginx:     docker compose -f docker-compose.production.yml logs -f nginx"

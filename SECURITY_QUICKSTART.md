@@ -131,18 +131,26 @@ CACHES = {
 }
 ```
 
-### Включите HTTPS (production)
+### Включите HTTPS (production, Docker)
 
-В `.env`:
+Сайт на **443** через Nginx в `docker-compose.production.yml`. Перед запуском:
+
+```bash
+bash deploy/generate-ssl-ip.sh [IP]
+```
+
+В `.env` на сервере (для доступа по IP с самоподписанным сертификатом):
+
 ```bash
 DEBUG=False
-SECURE_SSL_REDIRECT=True
-SESSION_COOKIE_SECURE=True
-CSRF_COOKIE_SECURE=True
-SECURE_HSTS_SECONDS=31536000
-SECURE_HSTS_INCLUDE_SUBDOMAINS=True
-SECURE_HSTS_PRELOAD=True
+USE_HTTPS=true
+SITE_URL=https://85.208.86.148
+SECURE_HSTS_SECONDS=0
 ```
+
+`SECURE_SSL_REDIRECT`, cookie flags и HSTS настраиваются в `ghostwriter/production_settings.py`. После привязки **домена** с Let's Encrypt задайте `SECURE_HSTS_SECONDS=31536000`.
+
+Подробнее: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) · [ssl/README.md](ssl/README.md).
 
 ---
 
@@ -229,7 +237,8 @@ python manage.py shell
 ### Для production:
 - ✅ Redis (обязательно!)
 - ✅ DEBUG=False
-- ✅ HTTPS (с сертификатом)
+- ✅ HTTPS на порту **443** (`bash deploy/generate-ssl-ip.sh`, затем Docker Compose production)
+- ✅ `SITE_URL=https://...`, `USE_HTTPS=true`
 - ✅ Мониторинг логов
 - ✅ Регулярные бэкапы
 

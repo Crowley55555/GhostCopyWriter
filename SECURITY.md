@@ -211,9 +211,14 @@ Referrer-Policy: strict-origin-when-cross-origin
 Content-Security-Policy: default-src 'self'; ...
 ```
 
-**Для HTTPS (production):**
+**Для HTTPS (production, Docker Nginx на :443):**
+
+Сертификат: `bash deploy/generate-ssl-ip.sh` → `ssl/cert.pem`, `ssl/key.pem` (см. [ssl/README.md](ssl/README.md)).
+
+HSTS через `SECURE_HSTS_SECONDS` в `.env` (`0` для IP с самоподписанным сертификатом, `31536000` после домена с Let's Encrypt):
+
 ```http
-Strict-Transport-Security: max-age=31536000; includeSubDomains
+Strict-Transport-Security: max-age=...
 ```
 
 ---

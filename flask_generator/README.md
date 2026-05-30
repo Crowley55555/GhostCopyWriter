@@ -154,6 +154,18 @@ Content-Type: application/json
 3. **Изоляция от основной БД**: Нет прямого доступа к пользовательским данным
 4. **Безопасная передача**: HTTPS для всех запросов в продакшне
 
+### Связь с Django (production)
+
+Django на российском сервере доступен снаружи как `https://<IP>/` (порт **443**, самоподписанный SSL — см. `deploy/generate-ssl-ip.sh` и [ssl/README.md](../ssl/README.md) в корне репозитория).
+
+В `.env` Django укажите URL этого Flask-сервиса:
+
+```env
+FLASK_EXTERNAL_URL=https://your-flask-server.com
+```
+
+Django шифрует промпты и обращается к Flask по HTTPS. Инструкция по деплою Flask: `deploy/deploy-flask.sh`, обзор — [DEPLOYMENT_GUIDE.md](../DEPLOYMENT_GUIDE.md).
+
 ### Пример шифрования
 ```python
 from crypto_utils import encrypt_data, decrypt_data

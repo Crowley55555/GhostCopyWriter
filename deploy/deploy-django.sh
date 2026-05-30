@@ -28,6 +28,14 @@ fi
 
 echo "✅ Docker и Docker Compose доступны"
 
+# SSL-сертификат для HTTPS :443 (если ещё нет)
+if [ ! -f ssl/cert.pem ] || [ ! -f ssl/key.pem ]; then
+    echo "🔐 Генерация SSL-сертификата..."
+    bash deploy/generate-ssl-ip.sh "${SERVER_IP:-85.208.86.148}"
+else
+    echo "✅ SSL-сертификаты уже есть (ssl/cert.pem, ssl/key.pem)"
+fi
+
 # Создание необходимых директорий
 echo "📁 Создание директорий..."
 sudo mkdir -p /opt/ghostwriter/{media,logs,postgres,redis,backups,static}
@@ -81,7 +89,7 @@ echo "✅ РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!"
 echo "=================================================================="
 echo "🌐 Django приложение: https://85.208.86.148 (или SITE_URL из .env)"
 echo "🔧 Админ панель: https://85.208.86.148/admin/"
-echo "   Перед запуском: bash deploy/generate-ssl-ip.sh"
+echo "🔐 SSL: ssl/cert.pem (перегенерация: bash deploy/generate-ssl-ip.sh [IP])"
 echo "📊 Логи: docker-compose -f docker-compose.production.yml logs -f django"
 echo "🛑 Остановка: docker-compose -f docker-compose.production.yml down"
 echo ""
