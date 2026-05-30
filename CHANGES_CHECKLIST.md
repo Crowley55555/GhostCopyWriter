@@ -23,9 +23,9 @@
 - [x] `flask_generator/Dockerfile` - обновлён
 - [x] `docker-entrypoint.sh` - проверка PostgreSQL и Redis
 - [x] `docker-compose.yml` - локальная разработка
-- [x] `docker-compose.production.yml` - production
+- [x] `docker-compose.production.yml` - production (сайт на хосте: **8010**, без 443)
 - [x] `docker-compose.flask.yml` - Flask микросервис
-- [x] `nginx.prod.conf` - production конфигурация
+- [x] `nginx.prod.conf` - production HTTP :80 → :8010, опциональный HTTPS :8443
 - [x] `flask_generator/nginx.conf` - Flask конфигурация
 
 ### 5. ✅ Обновление имени Telegram бота
@@ -46,8 +46,9 @@
 - [x] `generator/templates/generator/index.html` - "Темная тема" → "Киберпанк"
 
 ### 7. ✅ Документация
-- [x] `DOCKER_DEPLOYMENT.md` - полная инструкция по деплою
-- [x] `env.production.example` - пример .env для production
+- [x] `DEPLOYMENT_GUIDE.md` - полная инструкция по деплою на сервер
+- [x] `DEPLOY_UPDATE.md` - обновление после git pull (порт 8010)
+- [x] `env.production.example` - пример .env для production (`SITE_URL` с :8010)
 - [x] `FINANCIAL_MODEL.md` - финансовая модель проекта
 
 ---

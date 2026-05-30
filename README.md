@@ -133,7 +133,7 @@
   - Система токенов
   - Telegram Bot
   - Автоматизация задач (APScheduler)
-- **Порт:** 8000
+- **Порт:** 8000 (локальная разработка) / только внутри Docker в production (снаружи — **8010** через Nginx)
 
 #### 🤖 Flask Generator (AI Микросервис)
 - **Назначение:** Генерация через внешние AI API
@@ -495,136 +495,115 @@ python manage.py cleanup_tokens --delete --days=90
 
 ## 🚀 Deployment
 
-**📖 Полное руководство по деплою:** См. [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+| Документ | Назначение |
+|----------|------------|
+| [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Полная пошаговая инструкция для сервера |
+| [DEPLOY_UPDATE.md](DEPLOY_UPDATE.md) | Обновление после `git pull` |
+| [env.production.example](env.production.example) | Шаблон `.env` для production |
 
-### Docker Compose (рекомендуется)
+### Порты
 
-#### Полный стек (Django + Flask + PostgreSQL + Redis)
+| Режим | Файл compose | Доступ к сайту |
+|-------|----------------|----------------|
+| **Локальная разработка** | `docker-compose.yml` | `http://localhost:8000` |
+| **Production (сервер)** | `docker-compose.production.yml` | `http://<IP или домен>:8010` |
+
+В production Django (**8000**) и PostgreSQL/Redis **не публикуются** на хост — только Nginx на **8010**. Порт **443 на хосте не используется** (нет конфликта с системным nginx). Опциональный HTTPS — на **8443** (см. комментарии в `docker-compose.production.yml` и `nginx.prod.conf`).
+
+---
+
+### Production на сервере (Docker Compose)
 
 ```bash
-# Создайте .env файл из примера
-cp env.example .env
+cd /opt/GhostCopyWriter   # или ваш путь к проекту
 
-# Отредактируйте .env с вашими настройками
+cp env.production.example .env
+nano .env                  # заполнить DJANGO_SECRET_KEY, DB_PASSWORD, TELEGRAM_BOT_TOKEN, SITE_URL и др.
+chmod 600 .env
+
+docker compose -f docker-compose.production.yml up -d --build --remove-orphans
+
+docker compose -f docker-compose.production.yml ps
+curl -I http://127.0.0.1:8010/
+
+docker compose -f docker-compose.production.yml exec django python manage.py createsuperuser
+```
+
+**Важно:** всегда указывайте `-f docker-compose.production.yml`. Команда `docker compose up` без `-f` поднимает **dev**-стек (`docker-compose.yml`, порт **8000**).
+
+**Сайт:** `http://ваш-сервер:8010` · **Админка:** `http://ваш-сервер:8010/admin/`
+
+**Обновление после изменений в Git:**
+
+```bash
+bash deploy/update.sh
+# или: git pull && docker compose -f docker-compose.production.yml up -d --build
+```
+
+**Скрипты в `deploy/`:**
+
+| Скрипт | Описание |
+|--------|----------|
+| `deploy-django.sh` | Первичный деплой Django-стека |
+| `deploy-flask.sh` | Flask на зарубежном сервере (OpenAI) |
+| `deploy-full.sh` | Интерактивный выбор типа деплоя |
+| `update.sh` | Обновление production после `git pull` |
+
+---
+
+### Локальная разработка (Docker Compose)
+
+```bash
+cp env.example .env
 nano .env
 
-# Запустите все сервисы
-docker-compose up -d
-
-# Применитемиграции
-docker-compose exec django python manage.py migrate
-
-# Создайте суперпользователя
-docker-compose exec django python manage.py createsuperuser
+docker compose up -d
+docker compose exec django python manage.py migrate
+docker compose exec django python manage.py createsuperuser
 ```
 
-#### Только Django (без Flask)
+Сайт: `http://localhost:8000`
 
-```bash
-# Если Flask не нужен
-docker-compose -f docker-compose.yml up django db redis -d
-```
+Опционально — полный стек с Flask: `docker compose up -d` (все сервисы из `docker-compose.yml`).
 
-### Ручной deployment
-
-#### Production с gunicorn
-
-```bash
-# Установите зависимости
-pip install -r requirements.txt
-pip install gunicorn
-
-# Соберите статику
-python manage.py collectstatic --noinput
-
-# Запустите gunicorn
-gunicorn ghostwriter.wsgi:application \
-    --bind 0.0.0.0:8000 \
-    --workers 4 \
-    --timeout 300 \
-    --access-logfile - \
-    --error-logfile -
-```
-
-#### Production с nginx (reverse proxy)
-
-```nginx
-# /etc/nginx/sites-available/ghostwriter
-server {
-    listen 80;
-    server_name yourdomain.com;
-
-    location /static/ {
-        alias /path/to/Ghostwriter/staticfiles/;
-    }
-
-    location /media/ {
-        alias /path/to/Ghostwriter/media/;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-#### Telegram Bot (production)
-
-**Вариант 1: Polling режим**
-```bash
-# Запустите бота как daemon
-nohup python bot.py > bot.log 2>&1 &
-```
-
-**Вариант 2: Webhook режим**
-```bash
-# Установите webhook
-python bot.py --set-webhook
-
-# Django обрабатывает webhook через views.telegram_webhook
-# Настройте nginx для проксирования на /telegram-webhook/
-```
+---
 
 ### Переменные окружения (Production)
 
-Обязательные:
-```bash
-# Django
-DJANGO_SECRET_KEY=your-very-secret-key-here
-DEBUG=False
-ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+Скопируйте `env.production.example` → `.env`. Основные переменные:
 
-# Database (PostgreSQL)
+```bash
+DJANGO_SECRET_KEY=...
+DEBUG=False
+ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com,IP_СЕРВЕРА
+
 DB_HOST=db
 DB_NAME=ghostwriter
 DB_USER=ghostwriter
-DB_PASSWORD=your-secure-db-password
+DB_PASSWORD=...
 
-# GigaChat
-GIGACHAT_CLIENT_ID=your_gigachat_client_id
-GIGACHAT_CLIENT_SECRET=your_gigachat_client_secret
+GIGACHAT_CREDENTIALS=...
+GENERATOR_ENCRYPTION_KEY=...
 
-# Telegram
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-SITE_URL=https://yourdomain.com
+TELEGRAM_BOT_TOKEN=...
+BOT_USERNAME=your_bot
+TELEGRAM_WEBHOOK_SECRET=...
+SITE_URL=http://yourdomain.com:8010
+
+FLASK_EXTERNAL_URL=https://your-flask-server.com   # если используете OpenAI
+YOOKASSA_SHOP_ID=...
+YOOKASSA_SECRET_KEY=...
 ```
 
-Опциональные:
-```bash
-# Flask Generator (если используется)
-FLASK_GEN_URL=https://your-flask-server.com
-GENERATOR_ENCRYPTION_KEY=your-encryption-key
+Полный список — в [env.production.example](env.production.example).
 
-# OpenAI (для Flask)
-OPENAI_API_KEY=your-openai-api-key
+---
 
-# API интеграция (для безопасности)
-DJANGO_API_KEY=your-api-key-for-bot
-```
+### Ручной deployment (без Docker)
+
+Для production рекомендуется Docker. При ручной установке проксируйте на Gunicorn (`127.0.0.1:8000`) или на Docker Nginx (`127.0.0.1:8010`).
+
+**Telegram Bot:** в Docker-стеке бот в контейнере `ghostwriter-bot-prod` (polling). Отдельно: `python bot.py` с тем же `.env`.
 
 ---
 
@@ -852,12 +831,18 @@ Ghostwriter/
 ├── 🗂️ media/                      # Сгенерированные изображения
 ├── 🗂️ staticfiles/                # Статические файлы (CSS, JS)
 │
-├── 🐳 docker-compose.yml          # Docker Compose конфигурация
-├── 🐳 Dockerfile                  # Docker образ Django
-└── 🗂️ deploy/                     # Deployment скрипты
-    ├── deploy-full.sh            # Полный deployment
-    ├── deploy-django.sh          # Только Django
-    └── deploy-flask.sh           # Только Flask
+├── 🐳 docker-compose.yml              # Docker: локальная разработка (:8000)
+├── 🐳 docker-compose.production.yml   # Docker: production (:8010)
+├── 🐳 docker-compose.flask.yml        # Docker: Flask (зарубежный сервер)
+├── 🐳 nginx.prod.conf                 # Nginx для production
+├── 🐳 Dockerfile                      # Docker образ Django
+├── 📄 DEPLOYMENT_GUIDE.md             # Инструкция по деплою на сервер
+├── 📄 DEPLOY_UPDATE.md                # Обновление после git pull
+└── 🗂️ deploy/                         # Скрипты деплоя
+    ├── deploy-full.sh
+    ├── deploy-django.sh
+    ├── deploy-flask.sh
+    └── update.sh
 ```
 
 ### Дополнительные ресурсы
@@ -941,7 +926,7 @@ A: Переустановите: `pip install "langchain-core>=0.3,<0.4" --force
 - ✅ **Разделение генерации**: Чекбокс и кнопка для генерации изображений
 - ✅ **Юридические документы**: Оферта, политика конфиденциальности, отказ от ответственности
 - ✅ **GPT-4o-mini**: Обновлена модель OpenAI в Flask генераторе
-- ✅ **Единый DEPLOYMENT_GUIDE.md**: Полная инструкция по деплою
+- ✅ **Деплой на порту 8010**: `docker-compose.production.yml`, без 443 на хосте; [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 
 #### Улучшения
 - ✅ Переработан Telegram Bot с юридическими документами

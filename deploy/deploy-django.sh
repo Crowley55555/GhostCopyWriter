@@ -30,7 +30,7 @@ echo "✅ Docker и Docker Compose доступны"
 
 # Создание необходимых директорий
 echo "📁 Создание директорий..."
-sudo mkdir -p /opt/ghostwriter/{media,logs,postgres,redis,backups,ssl,static}
+sudo mkdir -p /opt/ghostwriter/{media,logs,postgres,redis,backups,static}
 sudo chown -R $USER:$USER /opt/ghostwriter
 
 # Остановка существующих контейнеров
