@@ -1,6 +1,6 @@
 # 🚀 Инструкция по обновлению проекта после git pull
 
-**Production:** используйте только `docker-compose.production.yml`. Сайт: `http://<сервер>:8010` (не `docker compose up` без `-f` — это dev на порту 8000).
+**Production:** используйте только `docker-compose.production.yml`. Сайт: `https://<сервер>` на порту **443** (не `docker compose up` без `-f` — это dev на порту 8000).
 
 См. также: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) · [README.md — Deployment](README.md#-deployment)
 
@@ -26,6 +26,12 @@ bash deploy/update.sh
 - ✅ Перезапуск всех сервисов production
 - ✅ Проверку статуса
 
+После перехода на HTTPS при первом деплое на сервере:
+
+```bash
+bash deploy/generate-ssl-ip.sh 85.208.86.148
+```
+
 ---
 
 ## Ручное обновление (пошагово)
@@ -34,6 +40,9 @@ bash deploy/update.sh
 cd /path/to/Ghostwriter
 
 git pull origin main
+
+# При отсутствии ssl/*.pem:
+bash deploy/generate-ssl-ip.sh
 
 docker compose -f docker-compose.production.yml stop django bot nginx
 
@@ -48,7 +57,7 @@ docker compose -f docker-compose.production.yml run --rm django python manage.py
 docker compose -f docker-compose.production.yml up -d --remove-orphans
 
 docker compose -f docker-compose.production.yml ps
-curl -I http://127.0.0.1:8010/
+curl -Ik https://127.0.0.1/
 ```
 
 ---
@@ -74,9 +83,9 @@ docker compose -f docker-compose.production.yml restart nginx
 
 | Проверка | Команда |
 |----------|---------|
-| HTTP на 8010 | `curl -I http://127.0.0.1:8010/` |
+| HTTPS на 443 | `curl -Ik https://85.208.86.148/` |
 | Контейнеры | `docker compose -f docker-compose.production.yml ps` |
-| Nginx Up + порт | `docker ps \| grep nginx-prod` → `0.0.0.0:8010->80/tcp` |
+| Nginx Up + порт | `docker ps \| grep nginx-prod` → `0.0.0.0:443->443/tcp` |
 | Логи Django | `docker compose -f docker-compose.production.yml logs --tail=50 django` |
 | Логи Bot | `docker compose -f docker-compose.production.yml logs --tail=50 bot` |
 | Логи Nginx | `docker compose -f docker-compose.production.yml logs --tail=50 nginx` |
@@ -85,15 +94,21 @@ docker compose -f docker-compose.production.yml restart nginx
 
 ### 🐛 Типичные проблемы
 
-**Connection refused на 8010** — Nginx не запущен (`Restarting` / `Created`):
+**Connection refused на 443** — Nginx не запущен (`Restarting` / `Created`):
 
 ```bash
 docker logs ghostwriter-nginx-prod --tail 30
+# Часто: нет ssl/cert.pem — bash deploy/generate-ssl-ip.sh
 docker compose -f docker-compose.production.yml down
 docker compose -f docker-compose.production.yml up -d --build
 ```
 
-**Bind for 443 failed** — на сервере старый `docker-compose.production.yml` с `"443:443"`. Нужна версия только с `"8010:80"` (см. `git pull`).
+**Bind for 443 failed** — порт занят другим процессом (`mtg-proxy`, системный nginx):
+
+```bash
+sudo ss -tlnp | grep ':443'
+docker stop mtg-proxy   # при необходимости
+```
 
 **TELEGRAM_BOT_TOKEN не установлен** — заполните `.env`, затем:
 

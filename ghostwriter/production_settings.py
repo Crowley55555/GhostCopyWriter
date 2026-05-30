@@ -117,9 +117,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
-SECURE_HSTS_SECONDS = 31536000
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+# Для доступа по IP с самоподписанным сертификатом задайте SECURE_HSTS_SECONDS=0 в .env
+_hsts_seconds = int(os.environ.get('SECURE_HSTS_SECONDS', '31536000'))
+SECURE_HSTS_SECONDS = _hsts_seconds
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _hsts_seconds > 0
+SECURE_HSTS_PRELOAD = _hsts_seconds > 0
 
 # HTTPS settings (если используется SSL через внешний reverse proxy)
 # ВАЖНО: Если используете Django напрямую без Nginx, SSL нужно настраивать на уровне Docker/балансировщика

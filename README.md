@@ -133,7 +133,7 @@
   - Система токенов
   - Telegram Bot
   - Автоматизация задач (APScheduler)
-- **Порт:** 8000 (локальная разработка) / только внутри Docker в production (снаружи — **8010** через Nginx)
+- **Порт:** 8000 (локальная разработка) / только внутри Docker в production (снаружи — **443** HTTPS через Nginx)
 
 #### 🤖 Flask Generator (AI Микросервис)
 - **Назначение:** Генерация через внешние AI API
@@ -506,9 +506,9 @@ python manage.py cleanup_tokens --delete --days=90
 | Режим | Файл compose | Доступ к сайту |
 |-------|----------------|----------------|
 | **Локальная разработка** | `docker-compose.yml` | `http://localhost:8000` |
-| **Production (сервер)** | `docker-compose.production.yml` | `http://<IP или домен>:8010` |
+| **Production (сервер)** | `docker-compose.production.yml` | `https://<IP или домен>` (порт **443**) |
 
-В production Django (**8000**) и PostgreSQL/Redis **не публикуются** на хост — только Nginx на **8010**. Порт **443 на хосте не используется** (нет конфликта с системным nginx). Опциональный HTTPS — на **8443** (см. комментарии в `docker-compose.production.yml` и `nginx.prod.conf`).
+В production Django (**8000**) и PostgreSQL/Redis **не публикуются** на хост — только Nginx на **443** (самоподписанный SSL для IP, см. `deploy/generate-ssl-ip.sh`).
 
 ---
 
@@ -521,17 +521,19 @@ cp env.production.example .env
 nano .env                  # заполнить DJANGO_SECRET_KEY, DB_PASSWORD, TELEGRAM_BOT_TOKEN, SITE_URL и др.
 chmod 600 .env
 
+bash deploy/generate-ssl-ip.sh 85.208.86.148   # самоподписанный сертификат для IP
+
 docker compose -f docker-compose.production.yml up -d --build --remove-orphans
 
 docker compose -f docker-compose.production.yml ps
-curl -I http://127.0.0.1:8010/
+curl -Ik https://127.0.0.1/
 
 docker compose -f docker-compose.production.yml exec django python manage.py createsuperuser
 ```
 
 **Важно:** всегда указывайте `-f docker-compose.production.yml`. Команда `docker compose up` без `-f` поднимает **dev**-стек (`docker-compose.yml`, порт **8000**).
 
-**Сайт:** `http://ваш-сервер:8010` · **Админка:** `http://ваш-сервер:8010/admin/`
+**Сайт:** `https://ваш-сервер` · **Админка:** `https://ваш-сервер/admin/` (браузер может предупредить о самоподписанном сертификате)
 
 **Обновление после изменений в Git:**
 
@@ -588,7 +590,9 @@ GENERATOR_ENCRYPTION_KEY=...
 TELEGRAM_BOT_TOKEN=...
 BOT_USERNAME=your_bot
 TELEGRAM_WEBHOOK_SECRET=...
-SITE_URL=http://yourdomain.com:8010
+SITE_URL=https://85.208.86.148
+USE_HTTPS=true
+SECURE_HSTS_SECONDS=0
 
 FLASK_EXTERNAL_URL=https://your-flask-server.com   # если используете OpenAI
 YOOKASSA_SHOP_ID=...
@@ -601,7 +605,7 @@ YOOKASSA_SECRET_KEY=...
 
 ### Ручной deployment (без Docker)
 
-Для production рекомендуется Docker. При ручной установке проксируйте на Gunicorn (`127.0.0.1:8000`) или на Docker Nginx (`127.0.0.1:8010`).
+Для production рекомендуется Docker. При ручной установке проксируйте на Gunicorn (`127.0.0.1:8000`) или на Docker Nginx (`127.0.0.1:443`).
 
 **Telegram Bot:** в Docker-стеке бот в контейнере `ghostwriter-bot-prod` (polling). Отдельно: `python bot.py` с тем же `.env`.
 
@@ -832,7 +836,7 @@ Ghostwriter/
 ├── 🗂️ staticfiles/                # Статические файлы (CSS, JS)
 │
 ├── 🐳 docker-compose.yml              # Docker: локальная разработка (:8000)
-├── 🐳 docker-compose.production.yml   # Docker: production (:8010)
+├── 🐳 docker-compose.production.yml   # Docker: production (HTTPS :443)
 ├── 🐳 docker-compose.flask.yml        # Docker: Flask (зарубежный сервер)
 ├── 🐳 nginx.prod.conf                 # Nginx для production
 ├── 🐳 Dockerfile                      # Docker образ Django
@@ -926,7 +930,7 @@ A: Переустановите: `pip install "langchain-core>=0.3,<0.4" --force
 - ✅ **Разделение генерации**: Чекбокс и кнопка для генерации изображений
 - ✅ **Юридические документы**: Оферта, политика конфиденциальности, отказ от ответственности
 - ✅ **GPT-4o-mini**: Обновлена модель OpenAI в Flask генераторе
-- ✅ **Деплой на порту 8010**: `docker-compose.production.yml`, без 443 на хосте; [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+- ✅ **Деплой HTTPS на 443**: `docker-compose.production.yml`, самоподписанный SSL по IP; [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 
 #### Улучшения
 - ✅ Переработан Telegram Bot с юридическими документами
