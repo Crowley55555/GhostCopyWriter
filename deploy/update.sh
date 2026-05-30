@@ -37,7 +37,7 @@ echo "✅ Изменения получены"
 # 2. Остановка контейнеров (опционально, можно пропустить для zero-downtime)
 echo ""
 echo "🛑 Шаг 2: Остановка контейнеров..."
-docker compose -f docker-compose.production.yml stop django bot || {
+docker compose -f docker-compose.production.yml stop django bot nginx || {
     echo "⚠️  Некоторые контейнеры уже остановлены или не запущены"
 }
 
@@ -111,9 +111,11 @@ echo "✅ ОБНОВЛЕНИЕ ЗАВЕРШЕНО УСПЕШНО!"
 echo "========================================================================"
 echo ""
 echo "📊 Полезные команды:"
+echo "   Сайт (HTTP):    http://<server>:8010"
 echo "   Логи Django:    docker compose -f docker-compose.production.yml logs -f django"
 echo "   Логи Bot:       docker compose -f docker-compose.production.yml logs -f bot"
+echo "   Логи Nginx:     docker compose -f docker-compose.production.yml logs -f nginx"
 echo "   Статус:         docker compose -f docker-compose.production.yml ps"
 echo "   Остановка:      docker compose -f docker-compose.production.yml down"
-echo "   Перезапуск:     docker compose -f docker-compose.production.yml restart django"
+echo "   Перезапуск:     docker compose -f docker-compose.production.yml restart django nginx"
 echo ""
