@@ -499,7 +499,9 @@ python manage.py cleanup_tokens --delete --days=90
 |----------|------------|
 | [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Полная пошаговая инструкция для сервера |
 | [DEPLOY_UPDATE.md](DEPLOY_UPDATE.md) | Обновление после `git pull` |
+| [MANUAL_TOKEN_GENERATOR.md](MANUAL_TOKEN_GENERATOR.md) | Ручная выдача ссылок доступа |
 | [env.production.example](env.production.example) | Шаблон `.env` для production |
+| [ssl/README.md](ssl/README.md) | SSL-сертификаты для production |
 
 ### Порты
 
@@ -508,7 +510,37 @@ python manage.py cleanup_tokens --delete --days=90
 | **Локальная разработка** | `docker-compose.yml` | `http://localhost:8000` |
 | **Production (сервер)** | `docker-compose.production.yml` | `https://<IP или домен>` (порт **443**) |
 
-В production Django (**8000**) и PostgreSQL/Redis **не публикуются** на хост — только Nginx на **443** (самоподписанный SSL для IP, см. `deploy/generate-ssl-ip.sh`).
+В production Django (**8000**) и PostgreSQL/Redis **не публикуются** на хост — только Nginx на **443** (самоподписанный SSL для IP).
+
+**Ограничения без домена:** браузер покажет предупреждение о сертификате; Let's Encrypt на голый IP недоступен. В firewall/security group откройте входящий **TCP 443** (`0.0.0.0/0`). Порт **8010** больше не используется.
+
+---
+
+### SSL-сертификат (production)
+
+Перед первым запуском Nginx создайте самоподписанный сертификат с SAN для IP сервера:
+
+```bash
+cd /opt/GhostCopyWriter   # каталог проекта на сервере
+bash deploy/generate-ssl-ip.sh              # по умолчанию IP 85.208.86.148
+bash deploy/generate-ssl-ip.sh ВАШ_IP       # другой IP
+```
+
+Скрипт создаёт `ssl/cert.pem` и `ssl/key.pem` (в git не попадают, см. `ssl/.gitignore`). Убедитесь, что порт **443** на хосте свободен (`docker stop mtg-proxy` и т.п., если занят).
+
+Проверка после запуска:
+
+```bash
+curl -Ik https://85.208.86.148/
+docker ps | grep nginx-prod   # ожидается 0.0.0.0:443->443/tcp
+```
+
+При смене IP сервера перегенерируйте сертификат и перезапустите Nginx:
+
+```bash
+bash deploy/generate-ssl-ip.sh НОВЫЙ_IP
+docker compose -f docker-compose.production.yml restart nginx
+```
 
 ---
 
@@ -546,6 +578,7 @@ bash deploy/update.sh
 
 | Скрипт | Описание |
 |--------|----------|
+| `generate-ssl-ip.sh` | Самоподписанный SSL для доступа по IP (`ssl/*.pem`) |
 | `deploy-django.sh` | Первичный деплой Django-стека |
 | `deploy-flask.sh` | Flask на зарубежном сервере (OpenAI) |
 | `deploy-full.sh` | Интерактивный выбор типа деплоя |
@@ -838,11 +871,13 @@ Ghostwriter/
 ├── 🐳 docker-compose.yml              # Docker: локальная разработка (:8000)
 ├── 🐳 docker-compose.production.yml   # Docker: production (HTTPS :443)
 ├── 🐳 docker-compose.flask.yml        # Docker: Flask (зарубежный сервер)
-├── 🐳 nginx.prod.conf                 # Nginx для production
+├── 🐳 nginx.prod.conf                 # Nginx для production (HTTPS :443)
+├── 🗂️ ssl/                            # cert.pem, key.pem (генерируются на сервере)
 ├── 🐳 Dockerfile                      # Docker образ Django
 ├── 📄 DEPLOYMENT_GUIDE.md             # Инструкция по деплою на сервер
 ├── 📄 DEPLOY_UPDATE.md                # Обновление после git pull
 └── 🗂️ deploy/                         # Скрипты деплоя
+    ├── generate-ssl-ip.sh             # SSL для IP без домена
     ├── deploy-full.sh
     ├── deploy-django.sh
     ├── deploy-flask.sh

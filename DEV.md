@@ -904,11 +904,41 @@ python -c "import secrets; print(secrets.token_hex(32))"
 
 ---
 
+## 🌐 Production (сервер, Docker)
+
+Локальная разработка — `http://localhost:8000`. На сервере — **HTTPS :443** через Docker Nginx.
+
+| Документ | Содержание |
+|----------|------------|
+| [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Полный деплой |
+| [DEPLOY_UPDATE.md](DEPLOY_UPDATE.md) | `git pull` и обновление |
+| [ssl/README.md](ssl/README.md) | SSL-сертификаты |
+
+**SSL перед первым запуском:**
+
+```bash
+bash deploy/generate-ssl-ip.sh 85.208.86.148
+docker compose -f docker-compose.production.yml up -d --build
+curl -Ik https://85.208.86.148/
+```
+
+**Ручная выдача токенов на сервере:** [MANUAL_TOKEN_GENERATOR.md](MANUAL_TOKEN_GENERATOR.md)
+
+```bash
+docker compose -f docker-compose.production.yml exec django \
+  python manual_token_generator.py --quick DEMO_FREE
+```
+
+В `.env` на сервере: `SITE_URL=https://85.208.86.148`, `USE_HTTPS=true`, `SECURE_HSTS_SECONDS=0`.
+
+---
+
 ## 📚 Дополнительные ресурсы
 
 ### Документация
 
 - **Django:** https://docs.djangoproject.com/
+- **Deployment:** [README.md — Deployment](README.md#-deployment)
 - **APScheduler:** https://apscheduler.readthedocs.io/
 - **GigaChat:** https://developers.sber.ru/portal/products/gigachat
 - **Telegram Bot:** https://core.telegram.org/bots/api
@@ -975,6 +1005,6 @@ python manage.py runserver --verbosity=2
 
 ---
 
-**Обновлено:** 11.01.2026  
-**Версия:** 2.0 (Developer Guide)  
+**Обновлено:** май 2026  
+**Версия:** 2.2+ (Developer Guide)  
 **Автор:** Ghostwriter Team

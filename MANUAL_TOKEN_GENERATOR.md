@@ -1,5 +1,36 @@
 # 🎫 Ручной генератор DEMO токенов для бета-теста
 
+## Production (Docker на сервере)
+
+Сайт доступен по **HTTPS на порту 443** (`https://IP/`, самоподписанный SSL). В `.env` на сервере: `SITE_URL=https://85.208.86.148`.
+
+```bash
+cd /opt/GhostCopyWriter
+
+# Быстрая ссылка DEMO
+docker compose -f docker-compose.production.yml exec django \
+  python manual_token_generator.py --quick DEMO_FREE
+
+# Токен разработчика
+docker compose -f docker-compose.production.yml exec django \
+  python manual_token_generator.py --quick DEVELOPER
+
+# Интерактивное меню
+docker compose -f docker-compose.production.yml exec -it django \
+  python manual_token_generator.py
+```
+
+Явный URL (если `SITE_URL` в контейнере не задан):
+
+```bash
+docker compose -f docker-compose.production.yml exec django \
+  python manual_token_generator.py --site-url https://85.208.86.148 --quick DEMO_FREE
+```
+
+Ссылки для пользователей: `https://85.208.86.148/auth/token/<uuid>/` (не `http://` и не порт 8010).
+
+---
+
 ## Описание
 
 Простой скрипт для ручной генерации токенов доступа во время бета-тестирования Ghostwriter.
@@ -306,7 +337,8 @@ python manage.py shell
 Спасибо что согласились протестировать Ghostwriter!
 
 Ваша DEMO ссылка (доступ на 14 дней):
-http://localhost:8000/auth/token/550e8400-e29b-41d4-a716-446655440000/
+https://85.208.86.148/auth/token/550e8400-e29b-41d4-a716-446655440000/
+(для локальной разработки: http://localhost:8000/auth/token/.../)
 
 Условия:
 • Срок действия: 14 дней
