@@ -33,8 +33,8 @@
 │                    ОБЛАЧНЫЙ СЕРВЕР (РФ)                         │
 │  ┌─────────┐  ┌─────────┐  ┌──────────┐  ┌─────────┐          │
 │  │  Nginx  │──│ Django  │──│ Postgres │  │  Redis  │          │
-│  │ :8010   │  │  :8000  │  │  :5432   │  │  :6379  │          │
-│  │ (хост)  │  └────┬────┘  └──────────┘  └─────────┘          │
+│  │ :443    │  │  :8000  │  │  :5432   │  │  :6379  │          │
+│  │ (HTTPS) │  └────┬────┘  └──────────┘  └─────────┘          │
 │  └─────────┘       │                                            │
 │                    │  ┌─────────────┐                           │
 │                    └──│ Telegram Bot│  (polling)                 │
@@ -53,7 +53,7 @@
 - **Telegram Bot** — меню (тарифы, токены, техподдержка, отзыв), оплата, выдача ссылок (режим polling).
 - **PostgreSQL** — база данных.
 - **Redis** — кеш.
-- **Nginx** — reverse proxy и статика. Снаружи: `http://<сервер>:8010` (порт 443 на хосте **не** используется).
+- **Nginx** — reverse proxy, SSL (самоподписанный сертификат по IP). Снаружи: `https://<IP>` на порту **443**.
 
 ---
 
@@ -61,12 +61,11 @@
 
 | Где | Порт | Назначение |
 |-----|------|------------|
-| Хост (сервер) | **8010** | Основной доступ: `http://<IP или домен>:8010` |
-| Хост (опционально) | **8443** | HTTPS, если раскомментировать `8443:8443` в compose и HTTPS в `nginx.prod.conf` |
-| Docker (Nginx) | 80 | Проброс `8010:80` |
+| Хост (сервер) | **443** | HTTPS: `https://<IP>/` (самоподписанный SSL в `ssl/`) |
+| Docker (Nginx) | 443 | Проброс `443:443` |
 | Docker (Django) | 8000 | Только внутри compose (`http://django:8000` для бота) |
 
-В `docker-compose.production.yml` по умолчанию только `"8010:80"`. Порт **443 на хосте не занимается** (нет конфликта с системным nginx).
+В `docker-compose.production.yml`: `"443:443"`. Перед первым запуском: `bash deploy/generate-ssl-ip.sh`.
 
 ---
 
@@ -77,7 +76,7 @@
 - RAM: 2 GB (рекомендуется 4 GB).
 - CPU: 2 ядра.
 - Диск: 20 GB SSD.
-- Сеть: порт **8010** открыт в firewall; при опциональном HTTPS — **8443** (не 443).
+- Сеть: порт **443** открыт в firewall (TCP, источник `0.0.0.0/0`).
 
 **Рекомендуемые:** 4 GB RAM, 4 ядра, 50 GB SSD.
 
@@ -126,7 +125,7 @@ openssl rand -hex 32
 
 - [yookassa.ru](https://yookassa.ru/) → Интеграция → Ключи API.
 - → `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`.
-- Webhook URL в кабинете ЮКасса: `http://ВАШ_ДОМЕН:8010/api/payments/yookassa/webhook/` (или `https://...:8443`, если включили опциональный HTTPS).
+- Webhook URL в кабинете ЮКасса: `https://85.208.86.148/api/payments/yookassa/webhook/` (или `https://ваш-домен/...` при привязке домена).
 
 ### 7. OpenAI (только для Flask-сервера)
 
@@ -196,7 +195,8 @@ nano .env
 | `TELEGRAM_BOT_TOKEN` | Токен от BotFather |
 | `BOT_USERNAME` | Username бота без @ |
 | `TELEGRAM_WEBHOOK_SECRET` | Секрет (openssl rand -hex 32) |
-| `SITE_URL` | `http://yourdomain.com:8010` (или `https://yourdomain.com:8443` при опциональном HTTPS) |
+| `SITE_URL` | `https://85.208.86.148` (или `https://ваш-домен.ru` с Let's Encrypt) |
+| `SECURE_HSTS_SECONDS` | `0` для IP с самоподписанным сертификатом; `31536000` после домена |
 | `EXECUTOR_*` | Реквизиты для оферты |
 | `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` | Для приёма платежей |
 
@@ -204,16 +204,16 @@ nano .env
 
 Сохраните файл.
 
-### Шаг 4. SSL (опционально, порт 8443)
-
-Для **HTTP на 8010** сертификаты **не нужны**. HTTPS только если раскомментируете `8443:8443` в `docker-compose.production.yml` и блок `server` на 8443 в `nginx.prod.conf`.
+### Шаг 4. SSL-сертификат (самоподписанный для IP)
 
 ```bash
-mkdir -p ssl
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout ssl/key.pem -out ssl/cert.pem -subj "/CN=yourdomain.com"
-chmod 600 ssl/*.pem
+cd /opt/ghostwriter
+bash deploy/generate-ssl-ip.sh 85.208.86.148
 ```
+
+Браузер покажет предупреждение о недоверенном сертификате — для IP без домена это нормально. Примите риск и продолжите.
+
+Убедитесь, что порт **443** на хосте свободен (`docker stop mtg-proxy` и др.).
 
 ### Шаг 5. Директория бэкапов и запуск контейнеров
 
@@ -253,8 +253,7 @@ docker compose -f docker-compose.production.yml exec django python manage.py cre
 
 Откройте в браузере:
 
-- `http://yourdomain.com:8010` и `http://yourdomain.com:8010/admin/`
-- Опционально HTTPS: `https://yourdomain.com:8443` (если включили 8443 в compose)
+- `https://85.208.86.148` и `https://85.208.86.148/admin/` (примите предупреждение о сертификате)
 
 ### Шаг 8. Бот
 
@@ -262,26 +261,12 @@ docker compose -f docker-compose.production.yml exec django python manage.py cre
 
 ---
 
-## Настройка домена
+## Настройка домена (опционально, вместо IP)
 
-1. **DNS:** A-записи для домена и www на IP сервера.
-2. В `.env`: `ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com`, `SITE_URL=http://yourdomain.com:8010`.
-3. Откройте в firewall порт **8010** (`ufw allow 8010/tcp`).
-4. После смены `.env`:
-
-```bash
-docker compose -f docker-compose.production.yml up -d
-```
-
-### Переход с IP на домен
-
-```bash
-cd /opt/ghostwriter
-sed -i 's|SITE_URL=.*|SITE_URL=http://ghostcopywriter.ru:8010|' .env
-docker compose -f docker-compose.production.yml up -d
-```
-
-Сайт: `http://ghostcopywriter.ru:8010` (порт **8010** обязателен в URL, если нет внешнего прокси на 80/443).
+1. **DNS:** A-запись домена на IP сервера.
+2. Let's Encrypt (системный certbot или обновление `ssl/`).
+3. В `.env`: `ALLOWED_HOSTS=yourdomain.com`, `SITE_URL=https://yourdomain.com`, `SECURE_HSTS_SECONDS=31536000`.
+4. `docker compose -f docker-compose.production.yml up -d --force-recreate django nginx`
 
 ---
 
@@ -410,12 +395,15 @@ docker compose -f docker-compose.production.yml config
 - Проверьте, что контейнер `django` в состоянии healthy.
 - Логи Nginx: `docker compose -f docker-compose.production.yml logs nginx`.
 - Проверка Django изнутри сети: `docker compose -f docker-compose.production.yml exec django curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/`.
-- Проверка с хоста через Nginx: `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8010/` (ожидается `200` или `302`).
+- Проверка HTTPS: `curl -Ik https://85.208.86.148/` (ожидается `200` или `302`, `-k` для самоподписанного).
+- `docker ps | grep nginx-prod` → `0.0.0.0:443->443/tcp`.
 
-**Сайт не открывается по адресу без порта**
+**Сайт не открывается**
 
-- Production слушает **8010**, а не 80. Используйте `http://<домен>:8010`, не `http://<домен>/`.
-- Убедитесь, что в firewall/security group открыт порт **8010** (`ufw allow 8010/tcp` и т.п.).
+- URL: `https://85.208.86.148` (не `http://`, не без порта на другом сервисе).
+- Firewall: входящий **TCP 443**, `0.0.0.0/0`.
+- Порт 443 не занят другим контейнером: `sudo ss -tlnp | grep ':443'`.
+- Есть `ssl/cert.pem` и `ssl/key.pem`: `bash deploy/generate-ssl-ip.sh`.
 
 **База недоступна**
 
@@ -453,15 +441,16 @@ docker compose -f docker-compose.production.yml exec django python manage.py sho
 - [ ] Проект склонирован, `.env` создан из `env.production.example`.
 - [ ] В `.env`: `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `DEBUG=False`, `DB_PASSWORD`, `GIGACHAT_CREDENTIALS`, `GENERATOR_ENCRYPTION_KEY`, `TELEGRAM_BOT_TOKEN`, `BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `SITE_URL`, реквизиты `EXECUTOR_*`.
 - [ ] При приёме платежей: `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY`; webhook в кабинете ЮКасса настроен.
-- [ ] Порт **8010** открыт; `curl http://127.0.0.1:8010/` отвечает.
+- [ ] Выполнено `bash deploy/generate-ssl-ip.sh`; порт **443** открыт в firewall.
+- [ ] `curl -Ik https://85.208.86.148/` отвечает (с сервера).
 - [ ] Выполнено: `docker compose -f docker-compose.production.yml up -d --build`.
 - [ ] Все контейнеры в статусе Up (при необходимости healthy).
 - [ ] Миграции применены (при старте Django или вручную).
 - [ ] Создан суперпользователь.
-- [ ] В `.env` указан `SITE_URL` с `:8010`.
+- [ ] В `.env`: `SITE_URL=https://85.208.86.148`, `USE_HTTPS=true`, `SECURE_HSTS_SECONDS=0`.
 - [ ] Бот в Telegram отвечает на `/start`.
 
 ---
 
 **Версия документа:** 2.4  
-**Последнее обновление:** май 2026 — production HTTP на порту **8010**
+**Последнее обновление:** май 2026 — production HTTPS на порту **443** (IP, самоподписанный SSL)

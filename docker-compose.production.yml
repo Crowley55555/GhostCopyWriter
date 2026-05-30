@@ -3,7 +3,7 @@
 # =============================================================================
 # Развертывание на облачном сервере: Django + Bot + PostgreSQL + Redis + Nginx.
 # Flask микросервис деплоится отдельно на зарубежном сервере.
-# Nginx: reverse proxy, статика. Сайт на хосте: http://<server>:8010
+# Nginx: reverse proxy, SSL. Сайт на хосте: https://<server> (порт 443)
 #
 # Версия 2.3 - включает:
 # - Защита от мультиаккаунтов, тарифы, ЮКасса, оферта и отказ от ответственности
@@ -47,7 +47,8 @@ services:
       # Django Security
       - SECRET_KEY=${DJANGO_SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
-      - USE_HTTPS=true  # Nginx обрабатывает SSL, Django получает заголовки через proxy
+      - USE_HTTPS=${USE_HTTPS:-true}
+      - SECURE_HSTS_SECONDS=${SECURE_HSTS_SECONDS:-0}
       # Site URL
       - SITE_URL=${SITE_URL}
       # Telegram
@@ -194,19 +195,16 @@ services:
   # ===========================================================================
   # Nginx Reverse Proxy
   # ===========================================================================
-  # Порты на хосте:
-  #   8010 → HTTP (основной доступ к сайту)
-  #   8443 → HTTPS (опционально, раскомментируйте ports и блок server в nginx.prod.conf)
-  # Порт 443 на хосте НЕ используется (чтобы не конфликтовать с системным nginx).
+  # Порт на хосте: 443 → HTTPS (самоподписанный сертификат в ssl/, см. deploy/generate-ssl-ip.sh)
   # ===========================================================================
   nginx:
     image: nginx:alpine
     container_name: ghostwriter-nginx-prod
     ports:
-      - "8010:80"
-      # - "8443:8443"   # опционально: HTTPS (нужны ssl/cert.pem, ssl/key.pem)
+      - "443:443"
     volumes:
       - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
       - static_data:/var/www/static:ro
       - media_data:/var/www/media:ro
       - nginx_logs:/var/log/nginx
