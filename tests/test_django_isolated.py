@@ -10,8 +10,9 @@ import json
 import tempfile
 from unittest.mock import patch, MagicMock
 from django.test import TestCase, Client, override_settings
-from django.contrib.auth.models import User
+from django.contrib.messages import get_messages
 from generator.models import UserProfile, Generation, GenerationTemplate
+from tests.helpers import TokenAuthMixin
 
 # Переопределяем настройки для тестов
 @override_settings(
@@ -26,29 +27,23 @@ from generator.models import UserProfile, Generation, GenerationTemplate
     USE_TZ=False,
     PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher']
 )
-class IsolatedDjangoTests(TestCase):
+class IsolatedDjangoTests(TokenAuthMixin, TestCase):
     """Изолированные тесты Django функциональности"""
     
     def setUp(self):
-        """Подготовка тестовых данных"""
+        """Подготовка тестовых данных: вход по токену пользователя Telegram"""
         self.client = Client()
-        self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
-            password='testpass123'
-        )
-        self.client.login(username='testuser', password='testpass123')
+        self.token, self.user = self.login_by_token(telegram_user_id=100001)
     
     def test_models_creation(self):
         """Тест создания всех моделей"""
         # Создаем профиль
         profile = UserProfile.objects.create(
             user=self.user,
-            city='Москва',
-            bio='Тестовый пользователь'
+            terms_accepted=True
         )
         self.assertEqual(profile.user, self.user)
-        self.assertEqual(profile.city, 'Москва')
+        self.assertTrue(profile.terms_accepted)
         
         # Создаем генерацию
         generation = Generation.objects.create(
@@ -67,22 +62,6 @@ class IsolatedDjangoTests(TestCase):
         )
         self.assertEqual(template.user, self.user)
         self.assertEqual(template.name, 'Тестовый шаблон')
-    
-    def test_quick_login_functionality(self):
-        """Тест функции быстрого входа"""
-        # Тест создания админа
-        response = self.client.post('/quick-login/admin/')
-        self.assertRedirects(response, '/admin/')
-        
-        admin_user = User.objects.get(username='admin')
-        self.assertTrue(admin_user.is_superuser)
-        
-        # Тест создания тестового пользователя
-        response = self.client.post('/quick-login/test_user_1/')
-        self.assertRedirects(response, '/profile/')
-        
-        test_user = User.objects.get(username='test_user_1')
-        self.assertEqual(test_user.first_name, 'Анна')
     
     @patch('generator.views.generate_text')
     @patch('generator.views.generate_image_gigachat')
@@ -201,19 +180,36 @@ class IsolatedDjangoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.user.username)
         
-        # Тест редактирования профиля
+        # Редактирование профиля отключено: возврат на профиль с пояснением
         response = self.client.get('/profile/edit/')
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'form')
+        self.assertRedirects(response, '/profile/')
+        notices = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertTrue(any('Редактирование профиля недоступно' in m for m in notices))
     
-    def test_form_validation(self):
+    @patch('generator.views.generate_text')
+    def test_form_validation(self, mock_text):
         """Тест валидации форм"""
-        # Тест с пустыми данными
+        mock_text.return_value = 'Мокированный текст поста'
+        
+        # Тест с пустыми данными: generator_view строит форму из
+        # `request.POST or None`, пустой POST даёт несвязанную форму
         response = self.client.post('/generator/', {}, 
                                   HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         
-        # Форма должна быть валидна, так как все поля необязательные
         self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertFalse(data['success'])
+        self.assertEqual(data['error'], 'Некорректно заполнена форма')
+        mock_text.assert_not_called()
+        
+        # Форма с одной темой валидна, так как остальные поля необязательные
+        response = self.client.post('/generator/', {'topic': 'Тема без критериев'},
+                                  HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(data['success'], data)
+        mock_text.assert_called_once()
     
     def test_generation_detail_view(self):
         """Тест детального просмотра генерации"""

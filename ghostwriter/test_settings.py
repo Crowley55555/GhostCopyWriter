@@ -39,7 +39,11 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'generator.middleware.TokenAccessMiddleware',  # Как в production_settings.py
 ]
+
+# Раннер с предохранителем: GigaChat и сеть без мока бросают исключение
+TEST_RUNNER = 'tests.runner.NoNetworkTestRunner'
 
 ROOT_URLCONF = 'ghostwriter.urls'
 

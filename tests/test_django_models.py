@@ -46,29 +46,24 @@ class UserProfileModelTest(TestCase):
     
     def test_create_user_profile(self):
         """Тест создания профиля пользователя"""
-        profile = UserProfile.objects.create(
+        UserProfile.objects.create(
             user=self.user,
-            city='Москва',
-            bio='Тестовый пользователь',
+            avatar='avatars/test.jpg',
             terms_accepted=True
         )
         
+        profile = UserProfile.objects.get(user=self.user)
         self.assertEqual(profile.user, self.user)
-        self.assertEqual(profile.city, 'Москва')
-        self.assertEqual(profile.bio, 'Тестовый пользователь')
+        self.assertEqual(profile.avatar.name, 'avatars/test.jpg')
         self.assertTrue(profile.terms_accepted)
         self.assertEqual(str(profile), 'Профиль: testuser')
     
     def test_user_profile_optional_fields(self):
         """Тест необязательных полей профиля"""
-        profile = UserProfile.objects.create(user=self.user)
+        UserProfile.objects.create(user=self.user)
         
-        self.assertEqual(profile.first_name, '')
-        self.assertEqual(profile.last_name, '')
-        self.assertEqual(profile.city, '')
-        self.assertEqual(profile.phone, '')
-        self.assertIsNone(profile.date_of_birth)
-        self.assertEqual(profile.bio, '')
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertFalse(profile.avatar)
         self.assertFalse(profile.terms_accepted)
 
 
