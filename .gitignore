@@ -190,3 +190,6 @@ cython_debug/
 
 # Claude Code Starter: приватный бизнес-контекст (второй мозг), не публиковать
 .business/
+
+# Local private business context (does not untrack existing files)
+/.business/
