@@ -7,6 +7,7 @@ Django модели для системы генерации контента
 - GenerationTemplate: Сохраненные шаблоны настроек генерации
 - TemporaryAccessToken: Временные токены доступа для анонимных пользователей
 - GigaChatTokenUsage: Отслеживание расхода токенов GigaChat
+- AccessEvent: События доступа для лимитов по IP (хэш IP, без IP в открытом виде)
 - SubscriptionButtonClick: Отслеживание кликов по кнопке подписки
 - Payment: Платежи пользователей (ЮКасса, Тинькофф)
 """
@@ -295,56 +296,59 @@ class TemporaryAccessToken(models.Model):
         """
         Увеличивает счётчик использованных токенов GigaChat.
         Для скрытых (HIDDEN_*) и DEVELOPER токенов использование не считается.
-        
+
+        Вызов GigaChat к этому моменту уже состоялся, поэтому расход
+        записывается и сверх лимита: иначе токен у края лимита ходил бы
+        в GigaChat без учёта, а can_use_gigachat оставался бы True.
+
+        Списание атомарное (F() в базе), чтобы параллельные запросы одного
+        токена не теряли расход; объект в памяти видит итоговое значение.
+
         Args:
             tokens_count (int): Количество использованных токенов
-        
+
         Returns:
-            bool: True если успешно, False если превышен лимит
+            bool: True если в пределах лимита, False если лимит превышен
         """
         if self.token_type in ('HIDDEN_14D', 'HIDDEN_30D', 'DEVELOPER', 'UNLIMITED'):
             return True  # не считаем для скрытых, разработчика и безлимита
+
+        TemporaryAccessToken.objects.filter(pk=self.pk).update(
+            gigachat_tokens_used=models.F('gigachat_tokens_used') + tokens_count
+        )
+        self.refresh_from_db(fields=['gigachat_tokens_used'])
+
         if self.gigachat_tokens_limit == -1:
-            # Безлимит - просто увеличиваем счётчик
-            self.gigachat_tokens_used += tokens_count
-            self.save()
             return True
-        
-        if self.gigachat_tokens_used + tokens_count > self.gigachat_tokens_limit:
-            return False
-        
-        self.gigachat_tokens_used += tokens_count
-        self.save()
-        return True
+        return self.gigachat_tokens_used <= self.gigachat_tokens_limit
     
     def consume_openai_tokens(self, tokens_count):
         """
         Увеличивает счётчик использованных токенов OpenAI.
         Для скрытых (HIDDEN_*) и DEVELOPER использование не считается.
         
+        Списание атомарное: проверку лимита и увеличение счётчика делает
+        один UPDATE, поэтому параллельные запросы не теряют расход и не
+        списывают сверх лимита.
+
         Args:
             tokens_count (int): Количество использованных токенов
-        
+
         Returns:
             bool: True если успешно, False если превышен лимит
         """
         if self.token_type in ('HIDDEN_14D', 'HIDDEN_30D', 'DEVELOPER'):
             return True  # не считаем для скрытых и разработчика
-        if self.openai_tokens_limit == -1:
-            # Безлимит - просто увеличиваем счётчик
-            self.openai_tokens_used += tokens_count
-            self.save()
-            return True
-        
         if self.openai_tokens_limit == 0:
             return False
-        
-        if self.openai_tokens_used + tokens_count > self.openai_tokens_limit:
-            return False
-        
-        self.openai_tokens_used += tokens_count
-        self.save()
-        return True
+
+        tokens = TemporaryAccessToken.objects.filter(pk=self.pk)
+        if self.openai_tokens_limit != -1:
+            # Сверх лимита не списываем (безлимит -1 просто увеличивает счётчик)
+            tokens = tokens.filter(openai_tokens_used__lte=self.openai_tokens_limit - tokens_count)
+        consumed = tokens.update(openai_tokens_used=models.F('openai_tokens_used') + tokens_count)
+        self.refresh_from_db(fields=['openai_tokens_used'])
+        return bool(consumed)
     
     def can_generate(self):
         """
@@ -369,14 +373,17 @@ class TemporaryAccessToken(models.Model):
         """
         Обновляет статистику использования (legacy метод)
         
+        Счётчик увеличивается атомарно (F() в базе), остальные поля токена
+        не перезаписываются.
+
         Args:
             ip_address (str): IP адрес пользователя для логирования
         """
-        self.total_used += 1
-        self.last_used = timezone.now()
+        fields = {'total_used': models.F('total_used') + 1, 'last_used': timezone.now()}
         if ip_address:
-            self.current_ip = ip_address
-        self.save()
+            fields['current_ip'] = ip_address
+        TemporaryAccessToken.objects.filter(pk=self.pk).update(**fields)
+        self.refresh_from_db(fields=list(fields))
     
     def renew_subscription(self):
         """
@@ -581,6 +588,46 @@ class GigaChatTokenUsage(models.Model):
             'by_operation': by_operation,
             'period_days': days
         }
+
+
+class AccessEvent(models.Model):
+    """
+    Событие доступа для лимитов по IP за сутки
+
+    Сейчас — выдача демо-токена «Попробовать»; фаза 3 добавит регистрацию.
+    IP в открытом виде не хранится: только HMAC-хэш (generator.access.hash_ip).
+    Записи старше суток не нужны и удаляются при выдаче (generator.access).
+    """
+    DEMO_TOKEN = 'DEMO_TOKEN'
+    EVENT_TYPES = (
+        (DEMO_TOKEN, 'Выдача демо-токена'),
+    )
+
+    event_type = models.CharField(
+        max_length=32,
+        choices=EVENT_TYPES,
+        verbose_name="Тип события"
+    )
+    ip_hash = models.CharField(
+        max_length=64,
+        verbose_name="HMAC-хэш IP"
+    )
+    created_at = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="Время"
+    )
+
+    class Meta:
+        verbose_name = "Событие доступа"
+        verbose_name_plural = "События доступа"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['event_type', 'ip_hash', 'created_at']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_event_type_display()} - {self.created_at:%d.%m.%Y %H:%M}"
 
 
 class SubscriptionButtonClick(models.Model):

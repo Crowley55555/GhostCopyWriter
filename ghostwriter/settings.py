@@ -193,3 +193,24 @@ SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 # Разрешить iframe для админки
 X_FRAME_OPTIONS = 'SAMEORIGIN'
+
+# =============================================================================
+# DEMO ACCESS AND GIGACHAT LIMITS
+# =============================================================================
+
+# За прокси (nginx) IP клиента берётся из X-Real-IP, иначе из REMOTE_ADDR.
+# X-Forwarded-For не используется: его подделывает клиент
+BEHIND_PROXY = os.environ.get('BEHIND_PROXY', 'False').lower() in ('true', '1', 'yes')
+
+# Сколько демо-токенов «Попробовать» выдаётся с одного IP за 24 часа
+DEMO_TOKENS_PER_IP_PER_DAY = int(os.environ.get('DEMO_TOKENS_PER_IP_PER_DAY', '3'))
+
+# Лимит GigaChat демо-токена (в оценочных токенах, как estimate_tokens)
+DEMO_GIGACHAT_TOKENS_LIMIT = int(os.environ.get('DEMO_GIGACHAT_TOKENS_LIMIT', '20000'))
+
+# Общий потолок: вызовов GigaChat (строк GigaChatTokenUsage) за последние 24 часа
+GIGACHAT_DAILY_CALL_LIMIT = int(os.environ.get('GIGACHAT_DAILY_CALL_LIMIT', '50'))
+
+# Максимальная длина пользовательского ввода, который уходит в промпт
+GENERATION_MAX_TOPIC_LENGTH = int(os.environ.get('GENERATION_MAX_TOPIC_LENGTH', '500'))
+GENERATION_MAX_TEXT_LENGTH = int(os.environ.get('GENERATION_MAX_TEXT_LENGTH', '6000'))

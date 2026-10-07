@@ -5,9 +5,9 @@ Middleware для системы токенов доступа
 кроме специально исключенных URL (админка, статика, публичные страницы).
 """
 
-from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
+from .access import MSG_NO_TOKEN, MSG_TOKEN_INVALID, deny
 from .models import TemporaryAccessToken
 
 
@@ -17,6 +17,7 @@ class TokenAccessMiddleware:
     
     Проверяет наличие активного токена в сессии для каждого запроса.
     Для DEMO токенов дополнительно проверяет лимит генераций.
+    AJAX-запросы при отказе получают JSON с ошибкой вместо редиректа.
     """
     
     def __init__(self, get_response):
@@ -38,6 +39,7 @@ class TokenAccessMiddleware:
         # Точные URL без токена (публичные страницы)
         self.exact_exempt_urls = [
             '/',                 # Главная страница (landing)
+            '/try/',             # «Попробовать»: выдача демо-токена (POST с CSRF)
         ]
     
     def __call__(self, request):
@@ -56,7 +58,7 @@ class TokenAccessMiddleware:
         
         if not token_str:
             # Нет токена - перенаправляем на страницу требования токена
-            return redirect('token_required_page')
+            return deny(request, MSG_NO_TOKEN, 403, 'token_required_page')
         
         # Проверяем валидность токена в базе данных
         try:
@@ -73,7 +75,7 @@ class TokenAccessMiddleware:
                 
                 # Очищаем сессию и перенаправляем
                 self._clear_session(request)
-                return redirect('invalid_token_page')
+                return deny(request, MSG_TOKEN_INVALID, 403, 'invalid_token_page')
             
             # Сохраняем токен в request для использования в views
             request.token = token
@@ -92,7 +94,7 @@ class TokenAccessMiddleware:
         except TemporaryAccessToken.DoesNotExist:
             # Токен не найден в базе - очищаем сессию
             self._clear_session(request)
-            return redirect('invalid_token_page')
+            return deny(request, MSG_TOKEN_INVALID, 403, 'invalid_token_page')
         
         # Всё хорошо - пропускаем запрос дальше
         response = self.get_response(request)

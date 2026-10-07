@@ -225,3 +225,13 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 # Настройки безопасности для персональных данных
 SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
+
+# Демо-доступ и лимиты GigaChat (те же имена и значения по умолчанию, что в settings.py)
+# За прокси (nginx) IP клиента берётся из X-Real-IP, иначе из REMOTE_ADDR.
+# X-Forwarded-For не используется: его подделывает клиент
+BEHIND_PROXY = os.environ.get('BEHIND_PROXY', 'False').lower() in ('true', '1', 'yes')
+DEMO_TOKENS_PER_IP_PER_DAY = int(os.environ.get('DEMO_TOKENS_PER_IP_PER_DAY', '3'))
+DEMO_GIGACHAT_TOKENS_LIMIT = int(os.environ.get('DEMO_GIGACHAT_TOKENS_LIMIT', '20000'))
+GIGACHAT_DAILY_CALL_LIMIT = int(os.environ.get('GIGACHAT_DAILY_CALL_LIMIT', '50'))
+GENERATION_MAX_TOPIC_LENGTH = int(os.environ.get('GENERATION_MAX_TOPIC_LENGTH', '500'))
+GENERATION_MAX_TEXT_LENGTH = int(os.environ.get('GENERATION_MAX_TEXT_LENGTH', '6000'))

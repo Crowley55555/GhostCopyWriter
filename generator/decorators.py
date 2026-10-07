@@ -8,6 +8,7 @@
 from functools import wraps
 from django.shortcuts import redirect
 from django.utils import timezone
+from .access import MSG_TOKEN_LIMIT, deny, get_client_ip  # get_client_ip — единая функция IP
 from .models import TemporaryAccessToken
 
 
@@ -58,9 +59,9 @@ def consume_generation(view_func):
             can_gc, gc_reason = token.can_use_gigachat()
             can_oa, oa_reason = token.can_use_openai()
             
-            # Если оба лимита исчерпаны - перенаправляем на страницу лимита
+            # Если оба лимита исчерпаны - перенаправляем на страницу лимита (AJAX — JSON)
             if not can_gc and not can_oa:
-                return redirect('limit_exceeded_page')
+                return deny(request, MSG_TOKEN_LIMIT, 429, 'limit_exceeded_page')
             
             # Редирект на openai_limit_exceeded только если OpenAI был в тарифе, но лимит исчерпан.
             # Для скрытых токенов (openai_tokens_limit == 0) не редиректим — страница генератора с заглушенным OpenAI.
@@ -92,29 +93,6 @@ def consume_generation(view_func):
         return view_func(request, *args, **kwargs)
     
     return wrapper
-
-
-def get_client_ip(request):
-    """
-    Получает IP адрес клиента из запроса
-    
-    Учитывает возможность работы за прокси-сервером или load balancer,
-    проверяя заголовки X-Forwarded-For и X-Real-IP.
-    
-    Args:
-        request: HTTP запрос
-    
-    Returns:
-        str: IP адрес клиента
-    """
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        # Берем первый IP из списка (реальный клиент)
-        ip = x_forwarded_for.split(',')[0].strip()
-    else:
-        # Прямое подключение без прокси
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
 
 
 def token_required(view_func):

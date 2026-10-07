@@ -441,7 +441,16 @@ def log_token_usage(operation_type, prompt_text, response_text, generation_id=No
                 generation = Generation.objects.get(id=generation_id)
             except Generation.DoesNotExist:
                 pass
-        
+
+        # Тема и платформа приходят от пользователя и бывают длиннее полей.
+        # PostgreSQL отверг бы такую строку, и вызов остался бы без учёта
+        topic_max = GigaChatTokenUsage._meta.get_field('topic').max_length
+        platform_max = GigaChatTokenUsage._meta.get_field('platform').max_length
+        if topic:
+            topic = str(topic)[:topic_max]
+        if platform:
+            platform = str(platform)[:platform_max]
+
         GigaChatTokenUsage.objects.create(
             generation=generation,
             user=user,
@@ -458,6 +467,35 @@ def log_token_usage(operation_type, prompt_text, response_text, generation_id=No
     except Exception as e:
         # Не прерываем выполнение при ошибке логирования
         print(f"Ошибка при логировании токенов: {e}")
+
+
+GIGACHAT_LIMIT_WARNING = "WARNING: Лимит токенов GigaChat исчерпан. Пожалуйста, обновите подписку или выберите другой тариф."
+
+
+def _gigachat_limit_reached(token):
+    """
+    Лимит GigaChat у переданного токена исчерпан (или токен неактивен, истёк)
+
+    Проверяется перед каждым обращением к клиенту: view проверяет доступ
+    один раз, а цепочка «текст → промпт → картинка» делает до трёх вызовов.
+    """
+    return token is not None and not token.can_use_gigachat()[0]
+
+
+def _account_gigachat_call(token, tokens_used, **log_kwargs):
+    """
+    Учёт состоявшегося вызова GigaChat: списание с токена и строка GigaChatTokenUsage
+
+    Квота к этому моменту уже потрачена, поэтому учитывается и вызов,
+    пересёкший лимит токена: его результат отдаётся как обычно, а следующий
+    вызов остановит _gigachat_limit_reached (токен в памяти видит списание).
+    """
+    if token:
+        try:
+            token.consume_gigachat_tokens(tokens_used)
+        except Exception as e:
+            print(f"Ошибка при учёте токенов GigaChat: {e}")
+    log_token_usage(token=token, **log_kwargs)
 
 
 def postprocess_final_result(text):
@@ -531,6 +569,8 @@ def generate_text(data, user=None, token=None, generation_id=None):
     Returns:
         str: Сгенерированный текст
     """
+    if _gigachat_limit_reached(token):
+        return GIGACHAT_LIMIT_WARNING
     try:
         print("Инициализация клиента GigaChat для генерации текста...")
         giga = _init_client()
@@ -551,31 +591,20 @@ def generate_text(data, user=None, token=None, generation_id=None):
         
         # --- Постобработка: убираем подписи и промежуточные этапы ---
         clean_result = postprocess_final_result(resp.content)
-        
-        # Подсчёт использованных токенов
-        tokens_used = estimate_tokens(full_prompt) + estimate_tokens(resp.content)
-        
-        # Учёт токенов в TemporaryAccessToken (если передан)
-        if token:
-            try:
-                if not token.consume_gigachat_tokens(tokens_used):
-                    # Лимит исчерпан
-                    return "WARNING: Лимит токенов GigaChat исчерпан. Пожалуйста, обновите подписку или выберите другой тариф."
-            except Exception as e:
-                print(f"Ошибка при учёте токенов GigaChat: {e}")
-        
-        # Логирование использования токенов
-        log_token_usage(
+
+        # Учёт вызова (и пересёкшего лимит: текст уже оплачен квотой и отдаётся)
+        _account_gigachat_call(
+            token,
+            estimate_tokens(full_prompt) + estimate_tokens(resp.content),
             operation_type='TEXT_GENERATION',
             prompt_text=full_prompt,
             response_text=resp.content,
             generation_id=generation_id,
             user=user,
-            token=token,
             topic=data.get('topic'),
             platform=data.get('platform')
         )
-        
+
         return clean_result
     except Exception as e:
         print(f"Ошибка при генерации текста: {e}")
@@ -604,6 +633,8 @@ def generate_image_prompt_from_text(text, form_data, user=None, token=None, gene
     Returns:
         str: Промпт для генерации изображения
     """
+    if _gigachat_limit_reached(token):
+        return None
     try:
         giga = _init_client()
         # Системный промпт для визуального генератора
@@ -634,31 +665,20 @@ def generate_image_prompt_from_text(text, form_data, user=None, token=None, gene
         ]
         resp = giga.invoke(messages)
         result = resp.content.strip()
-        
-        # Подсчёт использованных токенов
-        tokens_used = estimate_tokens(full_prompt) + estimate_tokens(resp.content)
-        
-        # Учёт токенов в TemporaryAccessToken (если передан)
-        if token:
-            try:
-                if not token.consume_gigachat_tokens(tokens_used):
-                    # Лимит исчерпан
-                    return None
-            except Exception as e:
-                print(f"Ошибка при учёте токенов GigaChat: {e}")
-        
-        # Логирование использования токенов
-        log_token_usage(
+
+        # Учёт вызова (и пересёкшего лимит: промпт уже оплачен квотой и отдаётся)
+        _account_gigachat_call(
+            token,
+            estimate_tokens(full_prompt) + estimate_tokens(resp.content),
             operation_type='IMAGE_PROMPT',
             prompt_text=full_prompt,
             response_text=resp.content,
             generation_id=generation_id,
             user=user,
-            token=token,
             topic=form_data.get('topic'),
             platform=platform
         )
-        
+
         return result
     except Exception as e:
         print(f"Ошибка при генерации промпта для изображения: {e}")
@@ -679,6 +699,8 @@ def generate_image_gigachat(image_prompt, user=None, token=None, generation_id=N
     Returns:
         str: Base64 изображение или None
     """
+    if _gigachat_limit_reached(token):
+        return None
     try:
         print("Инициализация клиента GigaChat для генерации изображения...")
         giga = _init_direct_client()
@@ -716,63 +738,27 @@ def generate_image_gigachat(image_prompt, user=None, token=None, generation_id=N
                 raise last_error
             raise RuntimeError("Не удалось получить ответ GigaChat")
         print("GigaChat image response:", response_content)
+
+        # Учёт вызова сразу после ответа: квота потрачена, даже если картинку
+        # не удастся извлечь или скачать. Картинка, пересёкшая лимит, отдаётся
+        _account_gigachat_call(
+            token,
+            estimate_tokens(full_prompt) + 1000,  # Примерная оценка для изображения
+            operation_type='IMAGE_GENERATION',
+            prompt_text=full_prompt,
+            response_text=str(response_content)[:500],  # Ограничиваем для логирования
+            generation_id=generation_id,
+            user=user
+        )
+
         # Если ответ уже содержит готовое base64 изображение, возвращаем его напрямую
         if isinstance(response_content, str) and response_content.strip().startswith("data:image"):
             print("Получено готовое base64 изображение от GigaChat")
-            result = response_content.strip()
-            
-            # Подсчёт использованных токенов (для изображений используем оценку на основе промпта)
-            tokens_used = estimate_tokens(full_prompt) + 1000  # Примерная оценка для изображения
-            
-            # Учёт токенов в TemporaryAccessToken (если передан)
-            if token:
-                try:
-                    if not token.consume_gigachat_tokens(tokens_used):
-                        # Лимит исчерпан
-                        return None
-                except Exception as e:
-                    print(f"Ошибка при учёте токенов GigaChat: {e}")
-            
-            # Логирование использования токенов
-            log_token_usage(
-                operation_type='IMAGE_GENERATION',
-                prompt_text=full_prompt,
-                response_text=response_content[:500] if len(response_content) > 500 else response_content,  # Ограничиваем для логирования
-                generation_id=generation_id,
-                user=user,
-                token=token
-            )
-            
-            return result
-        
+            return response_content.strip()
+
         file_id = extract_image_id(response_content)
         if file_id:
-            image_data = download_image(giga, file_id)
-            
-            # Подсчёт использованных токенов (для изображений используем оценку на основе промпта)
-            tokens_used = estimate_tokens(full_prompt) + 1000  # Примерная оценка для изображения
-            
-            # Учёт токенов в TemporaryAccessToken (если передан)
-            if token and image_data:
-                try:
-                    if not token.consume_gigachat_tokens(tokens_used):
-                        # Лимит исчерпан
-                        return None
-                except Exception as e:
-                    print(f"Ошибка при учёте токенов GigaChat: {e}")
-            
-            # Логирование использования токенов
-            if image_data:
-                log_token_usage(
-                    operation_type='IMAGE_GENERATION',
-                    prompt_text=full_prompt,
-                    response_text=f"Image generated (size: {len(image_data)} chars)" if isinstance(image_data, str) else "Image generated",
-                    generation_id=generation_id,
-                    user=user,
-                    token=token
-                )
-            
-            return image_data
+            return download_image(giga, file_id)
         else:
             print("Не удалось извлечь ID изображения из ответа")
             return None

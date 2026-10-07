@@ -43,14 +43,12 @@ urlpatterns = [
     
     # Token authentication routes (основной способ входа)
     path('auth/token/<uuid:token>/', views.token_auth_view, name='token_auth'),
+    path('try/', views.try_demo_view, name='try_demo'),  # «Попробовать»: демо-доступ без бота
     path('token-required/', views.token_required_page, name='token_required_page'),
     path('invalid-token/', views.invalid_token_page, name='invalid_token_page'),
     path('limit-exceeded/', views.limit_exceeded_page, name='limit_exceeded_page'),
     path('openai-limit-exceeded/', views.openai_limit_exceeded_page, name='openai_limit_exceeded_page'),
     path('disclaimer/', views.disclaimer_page, name='disclaimer_page'),
-    
-    # Telegram webhook
-    path('telegram/webhook/', views.telegram_webhook, name='telegram_webhook'),
     
     # API routes
     path('api/', include('generator.urls')),

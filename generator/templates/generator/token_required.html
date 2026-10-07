@@ -59,9 +59,12 @@
                     </div>
 
                     <div class="mt-4">
-                        <a href="https://t.me/Ghostcopywriterregistration_bot" class="btn btn-primary btn-lg" target="_blank">
-                            <i class="bi bi-telegram me-2"></i>Открыть Telegram бота
-                        </a>
+                        <form method="post" action="{% url 'try_demo' %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-play-fill me-2"></i>Попробовать
+                            </button>
+                        </form>
                     </div>
 
                     <div class="alert alert-info text-start mt-4">

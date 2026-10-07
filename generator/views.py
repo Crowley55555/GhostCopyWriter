@@ -22,6 +22,7 @@ from .gigachat_api import generate_text, generate_image_gigachat
 from .yandex_image_api import generate_image as generate_image_yandex
 from .fastapi_client import generate_text_and_prompt, generate_image
 from .decorators import consume_generation, token_required
+from .access import check_gigachat_access, get_session_token, issue_demo_token, start_token_session
 
 # =============================================================================
 # THIRD PARTY IMPORTS
@@ -191,6 +192,11 @@ def generator_view(request):
                                 image_url = None
                 else:
                     # Старый генератор Gigachat
+                    # Единая проверка до первого обращения к GigaChat
+                    denial = check_gigachat_access(request, topic=form_data.get('topic'))
+                    if denial:
+                        return denial
+                    
                     # Получаем данные для логирования токенов
                     user = request.user if request.user.is_authenticated else None
                     token = getattr(request, 'token', None)
@@ -320,7 +326,6 @@ def generator_view(request):
 # REGENERATION FUNCTIONS
 # =============================================================================
 
-@csrf_exempt
 def regenerate_text(request):
     """
     Перегенерация только текста для существующей записи
@@ -344,6 +349,10 @@ def regenerate_text(request):
                     'success': False,
                     'error': 'Не все необходимые данные предоставлены'
                 })
+            # Единая проверка до первого обращения к GigaChat
+            denial = check_gigachat_access(request, topic=topic)
+            if denial:
+                return denial
             # Получаем токен для учёта токенов
             user = request.user if request.user.is_authenticated else None
             token = getattr(request, 'token', None)
@@ -448,7 +457,6 @@ def update_generation_image(request, topic, image_url):
         )
         request.session['current_generation_id'] = gen.id
 
-@csrf_exempt
 @token_required
 def generate_image_from_text(request):
     """
@@ -473,6 +481,11 @@ def generate_image_from_text(request):
                     'success': False,
                     'error': 'Текст не предоставлен'
                 })
+            
+            # Единая проверка до первого обращения к GigaChat
+            denial = check_gigachat_access(request, topic=topic, result_text=result_text)
+            if denial:
+                return denial
             
             # Получаем данные для логирования токенов
             user = request.user if request.user.is_authenticated else None
@@ -578,7 +591,6 @@ def generate_image_from_text(request):
         'error': 'Метод не поддерживается'
     })
 
-@csrf_exempt
 def regenerate_image(request):
     """
     Перегенерация только изображения для существующей записи
@@ -601,6 +613,11 @@ def regenerate_image(request):
                     'success': False,
                     'error': 'Тема не предоставлена'
                 })
+            
+            # Единая проверка до первого обращения к GigaChat
+            denial = check_gigachat_access(request, topic=topic)
+            if denial:
+                return denial
             
             # Получаем данные для логирования токенов
             user = request.user if request.user.is_authenticated else None
@@ -1089,55 +1106,8 @@ def token_auth_view(request, token):
                 'token': token
             })
         
-        # Создаём анонимную сессию
-        request.session['access_token'] = str(token)
-        request.session['token_type'] = access_token.token_type
-        request.session['is_demo'] = (access_token.token_type == 'DEMO_FREE' or access_token.token_type.startswith('HIDDEN'))
-        request.session['gigachat_tokens_limit'] = access_token.gigachat_tokens_limit
-        request.session['gigachat_tokens_used'] = access_token.gigachat_tokens_used
-        request.session['openai_tokens_limit'] = access_token.openai_tokens_limit
-        request.session['openai_tokens_used'] = access_token.openai_tokens_used
-        if access_token.expires_at:
-            request.session['expires_at'] = access_token.expires_at.isoformat()
-        else:
-            request.session['expires_at'] = None
-        # Для обратной совместимости
-        request.session['daily_generations_left'] = -1
-        
-        # Обновляем информацию о последнем использовании
-        access_token.last_used = timezone.now()
-        access_token.current_ip = request.META.get('REMOTE_ADDR')
-        access_token.save()
-        
-        # Привязка к пользователю Django по telegram_user_id (для сохранения истории)
-        # Демо-токены из manual_token_generator (без telegram_user_id) остаются без привязки
-        if access_token.telegram_user_id and not request.user.is_authenticated:
-            from django.contrib.auth.models import User
-            from django.contrib.auth import login
-            import hashlib
-            
-            # Создаём уникальное имя пользователя на основе telegram_user_id
-            username = f"tg_{access_token.telegram_user_id}"
-            
-            # Ищем или создаём пользователя Django
-            user, created = User.objects.get_or_create(
-                username=username,
-                defaults={
-                    'email': f"tg{access_token.telegram_user_id}@ghostwriter.local",  # Фиктивный email
-                    'is_active': True,
-                    'is_staff': False,
-                    'is_superuser': False,
-                }
-            )
-            
-            # Если пользователь только что создан, устанавливаем случайный пароль
-            # (вход только по токену, пароль не используется)
-            if created:
-                user.set_unusable_password()
-                user.save()
-            
-            # Авторизуем пользователя в Django (для привязки генераций)
-            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+        # Сессия, отметка использования токена и вход пользователя Telegram
+        start_token_session(request, access_token)
         
         messages.success(
             request,
@@ -1150,6 +1120,26 @@ def token_auth_view(request, token):
         return render(request, 'generator/invalid_token.html', {
             'token': token
         })
+
+def try_demo_view(request):
+    """
+    «Попробовать»: демо-доступ без Telegram-бота
+    
+    Только POST с CSRF; GET ведёт на лендинг. Если в сессии уже есть
+    действующий токен — сразу в генератор, новый не выдаётся (повторное
+    нажатие не сбрасывает лимит). Иначе выдаёт демо-токен, если лимит
+    выдачи на IP за сутки не исчерпан.
+    """
+    if request.method != 'POST':
+        return redirect('landing')
+    
+    if get_session_token(request) is None:
+        token = issue_demo_token(request)
+        if token is None:
+            return render(request, 'generator/demo_limit.html', status=429)
+        start_token_session(request, token)
+    
+    return redirect('index')
 
 def token_required_page(request):
     """

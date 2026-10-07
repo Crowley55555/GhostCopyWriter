@@ -1,0 +1,21 @@
+{% extends 'generator/index.html' %}
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-lg border-0 fade-in">
+                <div class="card-header text-center">
+                    <h2 class="mb-0">Лимит демо-доступа на сегодня исчерпан</h2>
+                </div>
+                <div class="card-body p-4 text-center">
+                    <p class="lead mb-4">
+                        С вашего адреса за последние сутки уже выдано максимальное число демо-доступов.
+                        Попробуйте позже.
+                    </p>
+                    <a href="{% url 'landing' %}" class="btn btn-primary">На главную</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -157,3 +157,13 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
 ]
+
+# Демо-доступ и лимиты GigaChat: фиксированные значения, равные значениям
+# по умолчанию в settings.py, чтобы тесты не зависели от окружения;
+# тесты переопределяют их через override_settings
+BEHIND_PROXY = False
+DEMO_TOKENS_PER_IP_PER_DAY = 3
+DEMO_GIGACHAT_TOKENS_LIMIT = 20000
+GIGACHAT_DAILY_CALL_LIMIT = 50
+GENERATION_MAX_TOPIC_LENGTH = 500
+GENERATION_MAX_TEXT_LENGTH = 6000

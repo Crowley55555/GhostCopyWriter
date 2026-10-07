@@ -348,9 +348,12 @@
                         <i class="bi bi-sun-fill" id="themeIcon"></i>
                         <span id="themeText">Киберпанк</span>
                     </button>
-                    <a href="https://t.me/Ghostcopywriterregistration_bot" class="btn btn-primary" target="_blank">
-                        <i class="bi bi-telegram me-1"></i>Начать
-                    </a>
+                    <form method="post" action="{% url 'try_demo' %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-play-fill me-1"></i>Попробовать
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -367,10 +370,13 @@
                         для социальных сетей. Генерируйте профессиональный SMM-контент 
                         в один клик с помощью <strong>GigaChat</strong> и <strong>GPT-4</strong>.
                     </p>
-                    <a href="https://t.me/Ghostcopywriterregistration_bot" class="cta-button" target="_blank">
-                        <i class="bi bi-telegram"></i>
-                        Начать генерацию контента
-                    </a>
+                    <form method="post" action="{% url 'try_demo' %}" class="d-inline-block">
+                        {% csrf_token %}
+                        <button type="submit" class="cta-button">
+                            <i class="bi bi-play-fill"></i>
+                            Попробовать
+                        </button>
+                    </form>
                     <div class="security-badges">
                         <div class="security-badge"><i class="bi bi-shield-check"></i>Без регистрации</div>
                         <div class="security-badge"><i class="bi bi-incognito"></i>Полная анонимность</div>
