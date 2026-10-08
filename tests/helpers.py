@@ -59,7 +59,8 @@ class FakeGigaChat:
       его разбирает extract_image_id, а download_image скачивает через get_image.
 
     Обращения к GigaChat — вызовы invoke и chat; get_image только скачивает
-    уже готовую картинку.
+    уже готовую картинку. Сообщения каждого invoke сохраняются в
+    invoke_messages: по ним тесты видят, что ушло бы в GigaChat.
     """
 
     TEXT = 'Сгенерированный пост про кофейню'
@@ -69,6 +70,7 @@ class FakeGigaChat:
     def __init__(self):
         self.invoke_calls = 0
         self.chat_calls = 0
+        self.invoke_messages = []
 
     @property
     def calls(self):
@@ -76,6 +78,7 @@ class FakeGigaChat:
 
     def invoke(self, messages):
         self.invoke_calls += 1
+        self.invoke_messages.append(list(messages))
         return SimpleNamespace(content=self.TEXT)
 
     def chat(self, payload):

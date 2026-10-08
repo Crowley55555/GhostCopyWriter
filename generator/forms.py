@@ -1,12 +1,96 @@
 from django import forms
+from django.conf import settings
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm, UserChangeForm
 from django.contrib.auth.models import User
+from django.core.validators import MaxLengthValidator
 from .models import UserProfile
 
-# Удалены PLATFORM_CHOICES, TONE_CHOICES, TEMPLATE_CHOICES, так как они больше не используются
+# Площадки поста: значение уходит в промпт (правила площадки — gigachat_api.PLATFORM_RULES)
+PLATFORM_CHOICES = [
+    ("VK", "ВКонтакте"),
+    ("Telegram", "Telegram"),
+    ("Дзен", "Дзен"),
+]
+
+# 12 необязательных настроек поста (блок «Дополнительно»)
+SETTING_FIELDS = (
+    'voice_tone', 'content_purpose', 'emotional_tone', 'content_format',
+    'delivery_style', 'cta', 'formality_level', 'brand_voice',
+    'post_length', 'hashtag_usage', 'mentions', 'audience',
+)
+
+# Значения по умолчанию для пустых настроек. Цель — пост, который звучит
+# как владелец малого бизнеса, а не как реклама: спокойно, просто, по делу,
+# без выдуманных ссылок, отзывов и партнёров
+DEFAULT_SETTINGS = {
+    'voice_tone': ["Дружелюбный"],
+    'content_purpose': ["Информативный"],
+    'emotional_tone': ["Спокойный"],
+    'delivery_style': ["Прямой"],
+    'cta': "Прокомментировать",
+    'formality_level': ["Полуформальный"],
+    'brand_voice': ["Простой"],
+    'mentions': ["Без упоминаний"],
+    'audience': ["Потенциальные клиенты"],
+}
+
+# Длина, хэштеги и формат зависят от площадки
+PLATFORM_DEFAULT_SETTINGS = {
+    "VK": {'post_length': "Средний", 'hashtag_usage': "Минимум", 'content_format': ["Краткий"]},
+    "Telegram": {'post_length': "Короткий", 'hashtag_usage': "Без хэштегов", 'content_format': ["Краткий"]},
+    "Дзен": {'post_length': "Длинный", 'hashtag_usage': "Без хэштегов", 'content_format': ["Подробный"]},
+}
+
 
 class GenerationForm(forms.Form):
-    topic = forms.CharField(widget=forms.Textarea, label="Тема поста", required=False)
+    topic = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 3}),
+        label="Тема поста",
+        error_messages={
+            'required': "Напишите тему поста.",
+            'max_length': "Тема — не больше %(limit_value)d символов (сейчас %(show_value)d).",
+        },
+    )
+    platform = forms.ChoiceField(
+        choices=PLATFORM_CHOICES,
+        label="Площадка",
+        widget=forms.RadioSelect,
+        error_messages={
+            'required': "Выберите площадку: ВКонтакте, Telegram или Дзен.",
+            'invalid_choice': "Выберите площадку: ВКонтакте, Telegram или Дзен.",
+        },
+    )
+    business_info = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 2}),
+        label="О бизнесе",
+        help_text="Что продаёте, кому, как говорите. Одной-двумя строками.",
+        required=False,
+        error_messages={
+            'max_length': "«О бизнесе» — не больше %(limit_value)d символов (сейчас %(show_value)d).",
+        },
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Лимиты длины читаются при создании формы, а не при импорте:
+        # те же настройки проверяет check_gigachat_access
+        for name, max_length in (
+            ('topic', settings.GENERATION_MAX_TOPIC_LENGTH),
+            ('business_info', settings.GENERATION_MAX_BUSINESS_INFO_LENGTH),
+        ):
+            field = self.fields[name]
+            field.max_length = max_length
+            field.validators.append(MaxLengthValidator(max_length))
+            field.widget.attrs['maxlength'] = str(max_length)
+
+    def clean(self):
+        """Пустые настройки получают значения по умолчанию (свои для площадки)"""
+        cleaned_data = super().clean()
+        defaults = {**DEFAULT_SETTINGS, **PLATFORM_DEFAULT_SETTINGS.get(cleaned_data.get('platform'), {})}
+        for name, value in defaults.items():
+            if not cleaned_data.get(name):
+                cleaned_data[name] = list(value) if isinstance(value, list) else value
+        return cleaned_data
 
     # --- Новые критерии ---
     # Тон голоса
@@ -106,8 +190,9 @@ class GenerationForm(forms.Form):
         required=False
     )
 
-    # Призыв к действию (CTA)
+    # Призыв к действию (CTA); пустое значение — призыв по умолчанию
     CTA_CHOICES = [
+        ("", "По умолчанию"),
         ("Узнать больше", "Узнать больше (ссылка)"),
         ("Купить", "Купить/Заказать"),
         ("Записаться", "Записаться/Зарегистрироваться"),
@@ -124,28 +209,6 @@ class GenerationForm(forms.Form):
         label="Призыв к действию (CTA)",
         widget=forms.Select,
         help_text="Что вы хотите, чтобы пользователь сделал после прочтения.",
-        required=False
-    )
-
-    # --- Платформы: разрешённые и запрещённые в РФ ---
-    PLATFORM_ALLOWED = [
-        ("VK", "Оптимизирован под VK"),
-        ("Дзен", "Оптимизирован под Дзен"),
-        ("Telegram", "Оптимизирован под Telegram"),
-        ("TikTok", "Оптимизирован под TikTok/Reels"),
-    ]
-    PLATFORM_BANNED = [
-        ("Instagram", "Оптимизирован под Instagram"),
-        ("Facebook", "Оптимизирован под Facebook"),
-        ("Twitter", "Оптимизирован под Twitter/X"),
-        ("LinkedIn", "Оптимизирован под LinkedIn"),
-    ]
-    PLATFORM_SPECIFIC_CHOICES = PLATFORM_ALLOWED + PLATFORM_BANNED
-    platform_specific = forms.MultipleChoiceField(
-        choices=PLATFORM_SPECIFIC_CHOICES,
-        label="Адаптация под платформу",
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Можно выбрать одну или несколько платформ. Запрещённые в РФ выделены красным.",
         required=False
     )
 

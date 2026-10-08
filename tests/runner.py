@@ -13,6 +13,10 @@ from django.test.runner import DiscoverRunner
 GIGACHAT_MESSAGE = 'Тест обратился к GigaChat без мока'
 NETWORK_MESSAGE = 'Тест обратился к сети без мока'
 
+# Настоящие _init_client и _init_direct_client под заглушками. Берёт тест
+# создания клиента: он мокает конструктор GigaChat и проверяет аргументы
+UNGUARDED = {}
+
 
 class NetworkAccessBlocked(BaseException):
     """
@@ -37,6 +41,11 @@ class NoNetworkTestRunner(DiscoverRunner):
 
     def setup_test_environment(self, **kwargs):
         super().setup_test_environment(**kwargs)
+        from generator import gigachat_api
+        UNGUARDED.update(
+            _init_client=gigachat_api._init_client,
+            _init_direct_client=gigachat_api._init_direct_client,
+        )
         self._network_guards = [
             mock.patch('generator.gigachat_api._init_client', new=_block_gigachat),
             mock.patch('generator.gigachat_api._init_direct_client', new=_block_gigachat),

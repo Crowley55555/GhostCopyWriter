@@ -78,7 +78,30 @@
                                 <label for="id_topic" class="form-label"><i class="bi bi-lightbulb me-1"></i>Тема поста <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Кратко опишите, о чём будет пост"></i></label>
                                 {{ form.topic|add_class:'form-control' }}
                             </div>
+                            <div class="col-12">
+                                <label class="form-label"><i class="bi bi-window me-1"></i>Площадка</label>
+                                <div class="btn-group w-100" role="group" aria-label="Площадка">
+                                    {% for val, label in form.platform.field.choices %}
+                                    <input type="radio" class="btn-check" name="platform" id="id_platform_{{ forloop.counter0 }}" value="{{ val }}" autocomplete="off" required{% if form.platform.value == val %} checked{% endif %}>
+                                    <label class="btn btn-outline-primary" for="id_platform_{{ forloop.counter0 }}">{{ label }}</label>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label for="id_business_info" class="form-label"><i class="bi bi-shop me-1"></i>О бизнесе <span class="text-muted small">(необязательно)</span></label>
+                                {{ form.business_info|add_class:'form-control' }}
+                                <div class="form-text">{{ form.business_info.help_text }}</div>
+                            </div>
+                            <div class="col-12">
+                                <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSettings" aria-expanded="false" aria-controls="advancedSettings">
+                                    <i class="bi bi-sliders me-1"></i>Дополнительно
+                                </button>
+                                <span class="form-text ms-2">Не выбрано — подставим значения под площадку.</span>
+                            </div>
 
+                            <div class="col-12">
+                            <div class="collapse" id="advancedSettings">
+                            <div class="row g-4">
                             <!-- Группа: Стиль и эмоция -->
                             <div class="col-12 col-lg-6">
                                 <label class="form-label"><i class="bi bi-brush me-1"></i>Стиль подачи <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Манера, в которой строится коммуникация"></i></label>
@@ -192,58 +215,6 @@
                                 {{ form.cta|add_class:'form-select' }}
                             </div>
                             <div class="col-12 col-lg-6">
-                                <label class="form-label"><i class="bi bi-window me-1"></i>Адаптация под платформу <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Учет специфики и ограничений соцсети"></i></label>
-                                <div class="dropdown-multicheck mb-2" data-field="platform_specific">
-                                    <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать платформу</button>
-                                    <div class="dropdown-menu w-100 p-2">
-                                        <div class="mb-2 text-muted small">Разрешённые платформы</div>
-                                        <div class="mb-2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_vk" value="VK">
-                                                <label class="form-check-label" for="id_platform_specific_vk">Оптимизирован под VK</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_dzen" value="Дзен">
-                                                <label class="form-check-label" for="id_platform_specific_dzen">Оптимизирован под Дзен</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_telegram" value="Telegram">
-                                                <label class="form-check-label" for="id_platform_specific_telegram">Оптимизирован под Telegram</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_tiktok" value="TikTok">
-                                                <label class="form-check-label" for="id_platform_specific_tiktok">Оптимизирован под TikTok/Reels</label>
-                                            </div>
-                                        </div>
-                                        <div class="mb-2 text-danger small fw-bold">Запрещённые в Российской Федерации</div>
-                                        <div class="mb-2">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_instagram" value="Instagram">
-                                                <label class="form-check-label text-danger" for="id_platform_specific_instagram">Оптимизирован под Instagram</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_facebook" value="Facebook">
-                                                <label class="form-check-label text-danger" for="id_platform_specific_facebook">Оптимизирован под Facebook</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_twitter" value="Twitter">
-                                                <label class="form-check-label text-danger" for="id_platform_specific_twitter">Оптимизирован под Twitter/X</label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="platform_specific" id="id_platform_specific_linkedin" value="LinkedIn">
-                                                <label class="form-check-label text-danger" for="id_platform_specific_linkedin">Оптимизирован под LinkedIn</label>
-                                            </div>
-                                        </div>
-                                        <div class="mt-2">
-                                            <a href="https://www.consultant.ru/document/cons_doc_LAW_393349/" target="_blank" class="text-danger fw-bold" style="text-decoration:underline;">
-                                                Запрещены в Российской Федерации
-                                            </a>
-                                        </div>
-                                    </div>
-                                    <div class="selected-tags mt-1"></div>
-                                </div>
-                            </div>
-                            <div class="col-12 col-lg-6">
                                 <label class="form-label"><i class="bi bi-person-badge me-1"></i>Уровень формальности <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Степень официальности языка и обращения"></i></label>
                                 <div class="dropdown-multicheck mb-2" data-field="formality_level">
                                     <button class="btn btn-outline-secondary w-100 dropdown-toggle" type="button">Выбрать уровень</button>
@@ -264,6 +235,7 @@
                                 <label class="form-label"><i class="bi bi-arrows-expand me-1"></i>Длина поста <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Ориентировочный объем текста"></i></label>
                                 <input type="range" class="form-range" min="0" max="3" step="1" id="postLengthSlider" name="post_length_slider">
                                 <select id="id_post_length" name="post_length" style="display:none">
+                                    <option value="">По умолчанию</option>
                                     <option value="Очень короткий">Очень короткий</option>
                                     <option value="Короткий">Короткий</option>
                                     <option value="Средний">Средний</option>
@@ -278,6 +250,7 @@
                                 <label class="form-label"><i class="bi bi-hash me-1"></i>Количество хэштегов <i class="bi bi-info-circle ms-1" data-bs-toggle="tooltip" title="Стратегия применения хэштегов"></i></label>
                                 <input type="range" class="form-range" min="0" max="3" step="1" id="hashtagUsageSlider" name="hashtag_usage_slider">
                                 <select id="id_hashtag_usage" name="hashtag_usage" style="display:none">
+                                    <option value="">По умолчанию</option>
                                     <option value="Без хэштегов">Без хэштегов</option>
                                     <option value="Минимум">Минимум</option>
                                     <option value="Оптимально">Оптимально</option>
@@ -302,6 +275,9 @@
                                     </div>
                                     <div class="selected-tags mt-1"></div>
                                 </div>
+                            </div>
+                            </div>
+                            </div>
                             </div>
                             <div class="col-12 mb-3">
   <label class="form-label"><i class="bi bi-cpu me-1"></i>Выбор генератора</label>
@@ -607,7 +583,7 @@ form.addEventListener('submit', function(e) {
             var errHtml = '<div class="alert alert-danger mt-4">Ошибка: ' + (data.error || 'Не удалось сгенерировать контент.') + '</div>';
             if (data.form_errors) {
                 errHtml += '<ul class="mt-2">';
-                for (var field in data.form_errors) { errHtml += '<li><b>' + field + '</b>: ' + (data.form_errors[field] || []).join(', ') + '</li>'; }
+                for (var field in data.form_errors) { errHtml += '<li>' + (data.form_errors[field] || []).join(' ').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</li>'; }
                 errHtml += '</ul>';
             }
             resultBlock.innerHTML = errHtml;
@@ -716,12 +692,7 @@ document.addEventListener('click', function(e) {
     }
     
     if (e.target && e.target.id === 'regenTextBtn') {
-        const topicInput = document.querySelector('[name="topic"]');
-        const topic = topicInput ? topicInput.value : '';
-        if (!topic) {
-            showToast('Тема не указана', 'danger');
-            return;
-        }
+        // Сервер повторяет последнюю генерацию: тема, площадка и «О бизнесе» — из сессии
         e.target.disabled = true;
         showToast('Перегенерация текста...', 'info');
         fetch('/regenerate-text/', {
@@ -731,7 +702,7 @@ document.addEventListener('click', function(e) {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'X-CSRFToken': (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || ''
             },
-            body: `topic=${encodeURIComponent(topic)}`
+            body: ''
         })
         .then(resp => resp.json())
         .then(data => {
@@ -944,8 +915,9 @@ function getFormSettings() {
             data[el.name] = el.value;
         }
     });
-    // Исключаем поле topic из settings для шаблона
+    // Исключаем поле topic и «О бизнесе» из settings для шаблона
     delete data['topic'];
+    delete data['business_info'];
     return data;
 }
 
@@ -1219,16 +1191,18 @@ if (postLengthSlider && postLengthSelect) {
     });
     // При изменении select меняем слайдер
     postLengthSelect.addEventListener('change', function() {
-        postLengthSlider.value = postLengthLabels.indexOf(postLengthSelect.value);
+        if (postLengthSelect.value) postLengthSlider.value = postLengthLabels.indexOf(postLengthSelect.value);
         updatePostLengthLabel();
+        updatePostLengthDescription();
     });
-    // Инициализация
-    postLengthSelect.value = postLengthLabels[postLengthSlider.value];
+    // Инициализация: пока ползунок не тронут, длина — по умолчанию под площадку
+    postLengthSelect.value = '';
     function updatePostLengthLabel() {
         const labelDiv = postLengthSlider.nextElementSibling;
         labelDiv.querySelectorAll('span').forEach((el, idx) => {
-            el.style.fontWeight = (idx == postLengthSlider.value) ? 'bold' : 'normal';
-            el.style.color = (idx == postLengthSlider.value) ? 'var(--neon-blue)' : 'var(--text-muted)';
+            const active = postLengthSelect.value !== '' && idx == postLengthSlider.value;
+            el.style.fontWeight = active ? 'bold' : 'normal';
+            el.style.color = active ? 'var(--neon-blue)' : 'var(--text-muted)';
         });
     }
     updatePostLengthLabel();
@@ -1242,15 +1216,18 @@ if (hashtagUsageSlider && hashtagUsageSelect) {
         updateHashtagLabel();
     });
     hashtagUsageSelect.addEventListener('change', function() {
-        hashtagUsageSlider.value = hashtagUsageLabels.indexOf(hashtagUsageSelect.value);
+        if (hashtagUsageSelect.value) hashtagUsageSlider.value = hashtagUsageLabels.indexOf(hashtagUsageSelect.value);
         updateHashtagLabel();
+        updateHashtagUsageDescription();
     });
-    hashtagUsageSelect.value = hashtagUsageLabels[hashtagUsageSlider.value];
+    // Инициализация: пока ползунок не тронут, хэштеги — по умолчанию под площадку
+    hashtagUsageSelect.value = '';
     function updateHashtagLabel() {
         const labelDiv = hashtagUsageSlider.nextElementSibling;
         labelDiv.querySelectorAll('span').forEach((el, idx) => {
-            el.style.fontWeight = (idx == hashtagUsageSlider.value) ? 'bold' : 'normal';
-            el.style.color = (idx == hashtagUsageSlider.value) ? 'var(--neon-blue)' : 'var(--text-muted)';
+            const active = hashtagUsageSelect.value !== '' && idx == hashtagUsageSlider.value;
+            el.style.fontWeight = active ? 'bold' : 'normal';
+            el.style.color = active ? 'var(--neon-blue)' : 'var(--text-muted)';
         });
     }
     updateHashtagLabel();
@@ -1271,11 +1248,11 @@ const hashtagUsageDescriptions = [
 ];
 function updatePostLengthDescription() {
     const desc = document.getElementById('postLengthDescription');
-    desc.textContent = postLengthDescriptions[postLengthSlider.value];
+    desc.textContent = postLengthSelect.value ? postLengthDescriptions[postLengthSlider.value] : 'По умолчанию — под площадку';
 }
 function updateHashtagUsageDescription() {
     const desc = document.getElementById('hashtagUsageDescription');
-    desc.textContent = hashtagUsageDescriptions[hashtagUsageSlider.value];
+    desc.textContent = hashtagUsageSelect.value ? hashtagUsageDescriptions[hashtagUsageSlider.value] : 'По умолчанию — под площадку';
 }
 if (postLengthSlider) {
     postLengthSlider.addEventListener('input', updatePostLengthDescription);
@@ -1295,11 +1272,9 @@ document.getElementById('resetFormBtn').onclick = function() {
     form.querySelectorAll('select[multiple]').forEach(sel => {
         Array.from(sel.options).forEach(opt => opt.selected = false);
     });
-    // Сбросить слайдеры к начальному значению (0)
-    const postLengthSlider = document.getElementById('postLengthSlider');
-    if (postLengthSlider) postLengthSlider.value = 0;
-    const hashtagUsageSlider = document.getElementById('hashtagUsageSlider');
-    if (hashtagUsageSlider) hashtagUsageSlider.value = 0;
+    // Длина и хэштеги — снова по умолчанию под площадку
+    if (postLengthSelect) { postLengthSelect.value = ''; updatePostLengthLabel(); updatePostLengthDescription(); }
+    if (hashtagUsageSelect) { hashtagUsageSelect.value = ''; updateHashtagLabel(); updateHashtagUsageDescription(); }
     // Обновить теги мультиселектов
     document.querySelectorAll('.dropdown-multicheck').forEach(wrapper => {
         if (typeof updateSelectedTags === 'function') updateSelectedTags(wrapper);

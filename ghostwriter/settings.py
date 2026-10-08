@@ -211,6 +211,13 @@ DEMO_GIGACHAT_TOKENS_LIMIT = int(os.environ.get('DEMO_GIGACHAT_TOKENS_LIMIT', '2
 # Общий потолок: вызовов GigaChat (строк GigaChatTokenUsage) за последние 24 часа
 GIGACHAT_DAILY_CALL_LIMIT = int(os.environ.get('GIGACHAT_DAILY_CALL_LIMIT', '50'))
 
+# Модель GigaChat для текста поста и промпта картинки. По умолчанию — та же,
+# что библиотека gigachat берёт без настройки (Lite). Клиент картинок её
+# не получает, но библиотека gigachat сама читает переменную окружения
+# с этим именем
+GIGACHAT_MODEL = os.environ.get('GIGACHAT_MODEL', 'GigaChat')
+
 # Максимальная длина пользовательского ввода, который уходит в промпт
 GENERATION_MAX_TOPIC_LENGTH = int(os.environ.get('GENERATION_MAX_TOPIC_LENGTH', '500'))
 GENERATION_MAX_TEXT_LENGTH = int(os.environ.get('GENERATION_MAX_TEXT_LENGTH', '6000'))
+GENERATION_MAX_BUSINESS_INFO_LENGTH = int(os.environ.get('GENERATION_MAX_BUSINESS_INFO_LENGTH', '500'))

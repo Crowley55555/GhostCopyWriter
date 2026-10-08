@@ -16,7 +16,7 @@ from datetime import datetime
 # =============================================================================
 # PROJECT IMPORTS
 # =============================================================================
-from .forms import GenerationForm, LoginForm
+from .forms import GenerationForm, LoginForm, PLATFORM_CHOICES
 from .models import Generation, UserProfile, GenerationTemplate, SupportTicket, Review, SupportChat
 from .gigachat_api import generate_text, generate_image_gigachat
 from .yandex_image_api import generate_image as generate_image_yandex
@@ -146,7 +146,8 @@ def generator_view(request):
     result = None
     image_url = None
     limit_reached = False
-    form = GenerationForm(request.POST or None)
+    # «О бизнесе» из сессии подставляется в форму (сохраняется после успешной отправки)
+    form = GenerationForm(request.POST or None, initial={'business_info': request.session.get('business_info', '')})
     generator_type = request.POST.get('generator_type', 'gigachat')  # Новый параметр
     generate_image_flag = request.POST.get('generate_image', 'off') == 'on'  # Чекбокс генерации изображения
     if request.method == 'POST':
@@ -193,7 +194,8 @@ def generator_view(request):
                 else:
                     # Старый генератор Gigachat
                     # Единая проверка до первого обращения к GigaChat
-                    denial = check_gigachat_access(request, topic=form_data.get('topic'))
+                    denial = check_gigachat_access(request, topic=form_data.get('topic'),
+                                                   business_info=form_data.get('business_info'))
                     if denial:
                         return denial
                     
@@ -268,8 +270,13 @@ def generator_view(request):
                 
                 # Сохраняем ID генерации в сессии для последующих перегенераций
                 request.session['current_generation_id'] = gen.id
-                # Сохраняем form_data для последующей генерации изображения
+                # Сохраняем form_data для перегенерации текста и генерации изображения
                 request.session['last_form_data'] = form_data
+                # «О бизнесе» — для следующего открытия генератора; пустое значение очищает
+                if form_data.get('business_info'):
+                    request.session['business_info'] = form_data['business_info']
+                else:
+                    request.session.pop('business_info', None)
                 if is_ajax:
                     # Обновляем информацию о токенах из сессии перед отправкой ответа
                     token = getattr(request, 'token', None)
@@ -295,7 +302,8 @@ def generator_view(request):
         else:
             if is_ajax:
                 errors = {field: [str(err) for err in errs] for field, errs in form.errors.items()}
-                return JsonResponse({'success': False, 'error': 'Некорректно заполнена форма', 'form_errors': errors})
+                return JsonResponse({'success': False, 'error': 'Некорректно заполнена форма', 'form_errors': errors},
+                                    status=400)
     # Получаем информацию о токене для отображения лимитов
     token = getattr(request, 'token', None)
     is_demo = request.session.get('is_demo', False)
@@ -326,42 +334,45 @@ def generator_view(request):
 # REGENERATION FUNCTIONS
 # =============================================================================
 
+MSG_NOTHING_TO_REGENERATE = 'Нечего перегенерировать: сначала создайте пост в генераторе.'
+
+
 def regenerate_text(request):
     """
-    Перегенерация только текста для существующей записи
-    
+    Перегенерация текста с теми же данными, что у последней генерации
+
+    Берёт last_form_data из сессии (тема, площадка, «О бизнесе», настройки)
+    и строит сообщение к GigaChat так же, как generator_view. Тема из POST
+    не используется: перегенерация повторяет последнюю генерацию.
     Обновляет существующую запись Generation, добавляя новую версию текста
     с разделителем. Использует ID генерации из сессии для обновления.
-    
+
     Args:
-        request: AJAX POST запрос с темой
-    
+        request: AJAX POST запрос
+
     Returns:
         JsonResponse: Результат перегенерации или ошибка
     """
     if request.method == 'POST':
         try:
-            # Получаем данные из формы
-            topic = request.POST.get('topic')
-            # Здесь можно добавить обработку новых критериев, если нужно
-            if not topic:
+            # Данные последней генерации; старого формата (без площадки) — нет
+            form_data = request.session.get('last_form_data')
+            platforms = dict(PLATFORM_CHOICES)
+            if not form_data or not form_data.get('topic') or form_data.get('platform') not in platforms:
                 return JsonResponse({
                     'success': False,
-                    'error': 'Не все необходимые данные предоставлены'
-                })
+                    'error': MSG_NOTHING_TO_REGENERATE
+                }, status=400)
+            topic = form_data['topic']
             # Единая проверка до первого обращения к GigaChat
-            denial = check_gigachat_access(request, topic=topic)
+            denial = check_gigachat_access(request, topic=topic,
+                                           business_info=form_data.get('business_info'))
             if denial:
                 return denial
             # Получаем токен для учёта токенов
             user = request.user if request.user.is_authenticated else None
             token = getattr(request, 'token', None)
-            
-            # Создаем словарь с данными для генерации
-            form_data = {
-                'topic': topic
-                # Добавить новые критерии, если нужно
-            }
+
             # Генерируем новый текст
             result = generate_text(form_data, user=user, token=token)
             

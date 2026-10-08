@@ -74,6 +74,7 @@ class IsolatedDjangoTests(TokenAuthMixin, TestCase):
         # Отправляем запрос
         response = self.client.post('/generator/', {
             'topic': 'Изолированная тема',
+            'platform': 'VK',
             'generator_type': 'gigachat',
             'voice_tone': ['Дружелюбный'],
             'post_length': 'Средний'
@@ -132,21 +133,26 @@ class IsolatedDjangoTests(TokenAuthMixin, TestCase):
         # Настраиваем мок
         mock_generate.return_value = 'Новый перегенерированный текст'
         
-        # Устанавливаем ID в сессии
+        # Устанавливаем ID в сессии и данные последней генерации:
+        # перегенерация берёт тему и площадку из last_form_data
         session = self.client.session
         session['current_generation_id'] = generation.id
+        session['last_form_data'] = {'topic': 'Тема для перегенерации', 'platform': 'VK'}
         session.save()
-        
+
         # Отправляем запрос
         response = self.client.post('/regenerate-text/', {
             'topic': 'Тема для перегенерации'
         }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
-        
+
         # Проверяем ответ
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertTrue(data['success'])
         self.assertEqual(data['result'], 'Новый перегенерированный текст')
+        mock_generate.assert_called_once()
+        self.assertEqual(mock_generate.call_args.args[0]['platform'], 'VK')
+        self.assertEqual(mock_generate.call_args.args[0]['topic'], 'Тема для перегенерации')
         
         # Проверяем обновление в БД
         generation.refresh_from_db()
@@ -188,24 +194,38 @@ class IsolatedDjangoTests(TokenAuthMixin, TestCase):
     
     @patch('generator.views.generate_text')
     def test_form_validation(self, mock_text):
-        """Тест валидации форм"""
+        """Тест валидации форм: тема и площадка обязательны"""
         mock_text.return_value = 'Мокированный текст поста'
-        
+
         # Тест с пустыми данными: generator_view строит форму из
         # `request.POST or None`, пустой POST даёт несвязанную форму
-        response = self.client.post('/generator/', {}, 
+        response = self.client.post('/generator/', {},
                                   HTTP_X_REQUESTED_WITH='XMLHttpRequest')
-        
-        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(response.status_code, 400)
         data = json.loads(response.content)
         self.assertFalse(data['success'])
         self.assertEqual(data['error'], 'Некорректно заполнена форма')
+
+        # Без темы или без площадки форма не проходит
+        for payload, missing in (({'platform': 'VK'}, 'topic'),
+                                 ({'topic': 'Тема без площадки'}, 'platform'),
+                                 ({'topic': 'Тема', 'platform': 'Instagram'}, 'platform')):
+            with self.subTest(payload=payload):
+                response = self.client.post('/generator/', payload,
+                                          HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+                self.assertEqual(response.status_code, 400)
+                data = json.loads(response.content)
+                self.assertFalse(data['success'])
+                self.assertEqual(data['error'], 'Некорректно заполнена форма')
+                self.assertEqual(list(data['form_errors']), [missing])
         mock_text.assert_not_called()
-        
-        # Форма с одной темой валидна, так как остальные поля необязательные
-        response = self.client.post('/generator/', {'topic': 'Тема без критериев'},
+
+        # Тема и площадка — достаточно: остальные поля необязательные
+        response = self.client.post('/generator/', {'topic': 'Тема без критериев', 'platform': 'VK'},
                                   HTTP_X_REQUESTED_WITH='XMLHttpRequest')
-        
+
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertTrue(data['success'], data)

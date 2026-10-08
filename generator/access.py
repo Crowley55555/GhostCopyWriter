@@ -33,6 +33,7 @@ MSG_TOKEN_LIMIT = 'Лимит генераций для вашего досту�
 MSG_DAILY_LIMIT = 'Сервис исчерпал дневной лимит генераций. Попробуйте позже.'
 MSG_TOPIC_TOO_LONG = 'Слишком длинная тема: не больше {max_length} символов.'
 MSG_TEXT_TOO_LONG = 'Слишком длинный текст поста: не больше {max_length} символов.'
+MSG_BUSINESS_INFO_TOO_LONG = 'Слишком длинное описание «О бизнесе»: не больше {max_length} символов.'
 
 
 def get_client_ip(request):
@@ -171,7 +172,7 @@ def issue_demo_token(request):
     return token
 
 
-def check_gigachat_access(request, topic=None, result_text=None):
+def check_gigachat_access(request, topic=None, result_text=None, business_info=None):
     """
     Единая проверка перед каждым вызовом GigaChat
 
@@ -198,6 +199,7 @@ def check_gigachat_access(request, topic=None, result_text=None):
     for value, max_length, message in (
         (topic, settings.GENERATION_MAX_TOPIC_LENGTH, MSG_TOPIC_TOO_LONG),
         (result_text, settings.GENERATION_MAX_TEXT_LENGTH, MSG_TEXT_TOO_LONG),
+        (business_info, settings.GENERATION_MAX_BUSINESS_INFO_LENGTH, MSG_BUSINESS_INFO_TOO_LONG),
     ):
         if value and len(value) > max_length:
             return deny(request, message.format(max_length=max_length), 400, 'limit_exceeded_page')

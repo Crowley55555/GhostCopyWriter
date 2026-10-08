@@ -45,13 +45,18 @@ AJAX = {'HTTP_X_REQUESTED_WITH': 'XMLHttpRequest'}
 
 TOPIC = 'Кофейня у дома: новый сезонный напиток'
 
-# Эндпоинты генерации и данные запроса, с которыми они доходят до GigaChat
+# Эндпоинты генерации и данные запроса, с которыми они доходят до GigaChat.
+# Перегенерация текста берёт данные из last_form_data в сессии (фаза 2),
+# см. set_last_form_data
 GENERATION_ENDPOINTS = {
-    '/generator/': {'topic': TOPIC},
+    '/generator/': {'topic': TOPIC, 'platform': 'Telegram'},
     '/regenerate-text/': {'topic': TOPIC},
     '/generate-image-from-text/': {'topic': TOPIC, 'result_text': 'Готовый пост про кофейню'},
     '/regenerate-image/': {'topic': TOPIC},
 }
+
+# Данные последней генерации, как их сохраняет generator_view
+LAST_FORM_DATA = {'topic': TOPIC, 'platform': 'Telegram'}
 
 # Функции GigaChat: и имена, импортированные в views, и сам модуль API
 GIGACHAT_TARGETS = (
@@ -92,6 +97,13 @@ def try_demo(remote_addr='127.0.0.1', **extra):
     return client, response
 
 
+def set_last_form_data(client, **overrides):
+    """Кладёт в сессию клиента данные последней генерации — их берёт перегенерация текста"""
+    session = client.session
+    session['last_form_data'] = dict(LAST_FORM_DATA, **overrides)
+    session.save()
+
+
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class TryDemoFlowTests(TestCase):
     """Сценарий «Попробовать» и свойства демо-токена"""
@@ -113,7 +125,7 @@ class TryDemoFlowTests(TestCase):
         with patch('generator.views.generate_text', return_value='Готовый пост про кофейню') as mock_text:
             response = client.post(
                 '/generator/',
-                {'topic': TOPIC, 'csrfmiddlewaretoken': csrf},
+                {'topic': TOPIC, 'platform': 'VK', 'csrfmiddlewaretoken': csrf},
                 **AJAX,
             )
 
@@ -415,6 +427,8 @@ class GenerationGuardTests(TestCase):
         for url, data in GENERATION_ENDPOINTS.items():
             client = make_client()
             payload = dict(data, **(data_override or {}))
+            # Перегенерация текста берёт тему из сессии: та же, что в запросе
+            set_last_form_data(client, topic=payload['topic'])
             with gigachat_mocks() as mocks:
                 response = client.post(url, payload, **(AJAX if ajax else {}))
             results[url] = (response, gigachat_called(mocks))
@@ -496,6 +510,7 @@ class GenerationGuardTests(TestCase):
         GigaChatTokenUsage.objects.update(created_at=timezone.now() - timedelta(hours=25))
 
         client = self.demo_client()
+        set_last_form_data(client)
         with gigachat_mocks() as mocks:
             response = client.post('/regenerate-text/', {'topic': TOPIC}, **AJAX)
 
@@ -595,6 +610,7 @@ class CsrfTests(TestCase):
         self.login_by_link()
         self.client.get('/generator/')
         csrf = self.client.cookies['csrftoken'].value
+        set_last_form_data(self.client)
 
         with gigachat_mocks() as mocks:
             response = self.client.post('/regenerate-text/', {'topic': TOPIC},
@@ -668,14 +684,23 @@ class LongTopicAccountingTests(TestCase):
         self.topic = 'т' * settings.GENERATION_MAX_TOPIC_LENGTH
         self.max_length = GigaChatTokenUsage._meta.get_field('topic').max_length
 
+    def long_topic_client(self):
+        """Демо-клиент; перегенерация возьмёт ту же длинную тему из сессии"""
+        client, _ = try_demo()
+        set_last_form_data(client, topic=self.topic)
+        return client
+
+    def payload(self):
+        return {'topic': self.topic, 'platform': 'Telegram'}
+
     def test_row_written_for_max_topic(self):
         """Строка учёта есть, тема в ней не длиннее поля"""
         for url in self.URLS:
             with self.subTest(url=url):
                 GigaChatTokenUsage.objects.all().delete()
-                client, _ = try_demo()
+                client = self.long_topic_client()
                 with postgres_varchar_lengths(GigaChatTokenUsage), fake_gigachat() as fake:
-                    response = client.post(url, {'topic': self.topic}, **AJAX)
+                    response = client.post(url, self.payload(), **AJAX)
 
                 self.assertTrue(response.json()['success'], response.json())
                 self.assertEqual(fake.calls, 1)
@@ -689,10 +714,10 @@ class LongTopicAccountingTests(TestCase):
         for url in self.URLS:
             with self.subTest(url=url):
                 GigaChatTokenUsage.objects.all().delete()
-                client, _ = try_demo()
+                client = self.long_topic_client()
                 with postgres_varchar_lengths(GigaChatTokenUsage), fake_gigachat() as fake:
-                    first = client.post(url, {'topic': self.topic}, **AJAX)
-                    second = client.post(url, {'topic': self.topic}, **AJAX)
+                    first = client.post(url, self.payload(), **AJAX)
+                    second = client.post(url, self.payload(), **AJAX)
 
                 self.assertTrue(first.json()['success'], first.json())
                 self.assertEqual(second.status_code, 429)
@@ -723,6 +748,7 @@ class CallChainAccountingTests(TestCase):
     def near_limit_client(self):
         """Демо-клиент, которому до лимита GigaChat остался один токен"""
         client, _ = try_demo()
+        set_last_form_data(client)
         token = demo_token_of(client)
         token.gigachat_tokens_used = token.gigachat_tokens_limit - 1
         token.save()
@@ -733,7 +759,7 @@ class CallChainAccountingTests(TestCase):
         client, _ = try_demo()
 
         with fake_gigachat() as fake:
-            response = client.post('/generator/', {'topic': TOPIC, 'generate_image': 'on'}, **AJAX)
+            response = client.post('/generator/', dict(LAST_FORM_DATA, generate_image='on'), **AJAX)
 
         data = response.json()
         self.assertTrue(data['success'], data)
@@ -749,7 +775,7 @@ class CallChainAccountingTests(TestCase):
         client, token = self.near_limit_client()
 
         with fake_gigachat() as fake:
-            response = client.post('/generator/', {'topic': TOPIC, 'generate_image': 'on'}, **AJAX)
+            response = client.post('/generator/', dict(LAST_FORM_DATA, generate_image='on'), **AJAX)
 
         data = response.json()
         self.assertTrue(data['success'], data)
