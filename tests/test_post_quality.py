@@ -41,6 +41,8 @@ from generator.gigachat_api import (
     POST_LENGTH_RANGES,
     SETTING_PROMPTS,
     STOP_PHRASES,
+    SYSTEM_PROMPT_FACTS_FROM_INPUT,
+    SYSTEM_PROMPT_NO_HEALTH_GUARANTEES,
     SYSTEM_PROMPT_OUTPUT,
     assemble_prompt_from_criteria,
     find_stop_phrases,
@@ -410,6 +412,33 @@ class GigaChatMessagesTests(TestCase):
         promises = next((line for line in system.splitlines() if line.startswith('- Не обещай')), '')
         self.assertIn('пользу для здоровья', promises)
         self.assertIn('без метафор', system)
+
+    # Фаза 2а.1: правила промпта из `mvp.md`, п. 5 (две строки-константы)
+    def test_system_prompt_has_facts_from_input_rule_for_all_platforms(self):
+        """Строка «Слова клиента — только из текста отзыва во вводе» — для каждой площадки"""
+        for platform in PLATFORMS:
+            with self.subTest(platform=platform):
+                system, _ = self.messages(topic=TOPIC, platform=platform)
+                self.assertIn(SYSTEM_PROMPT_FACTS_FROM_INPUT, system)
+                # ключевые слова, чтобы перефразировка не прошла:
+                self.assertIn('слова клиента', system.lower())
+                self.assertIn('отзыв', system.lower())
+
+    def test_system_prompt_has_no_health_guarantees_rule_for_all_platforms(self):
+        """Строка «В медицинских, косметологических и финансовых темах — без гарантий результата»"""
+        for platform in PLATFORMS:
+            with self.subTest(platform=platform):
+                system, _ = self.messages(topic=TOPIC, platform=platform)
+                self.assertIn(SYSTEM_PROMPT_NO_HEALTH_GUARANTEES, system)
+                for word in ('медицинских', 'косметологических', 'финансовых', 'без гарантий'):
+                    self.assertIn(word, system.lower(), f'нет «{word}» в промпте для {platform}')
+
+    def test_prompt_rule_constants_values(self):
+        """Константы правил содержат ключевые слова (как описано в mvp.md, п. 5)"""
+        self.assertIn('отзыв', SYSTEM_PROMPT_FACTS_FROM_INPUT.lower())
+        self.assertIn('слова клиента', SYSTEM_PROMPT_FACTS_FROM_INPUT.lower())
+        for word in ('медицинских', 'косметологических', 'финансовых', 'без гарантий'):
+            self.assertIn(word, SYSTEM_PROMPT_NO_HEALTH_GUARANTEES.lower())
 
     # Нормы площадок при значениях по умолчанию (решение владельца, п. 4:
     # нормы не меняются): длина, хэштеги, эмодзи
@@ -862,6 +891,63 @@ class PostprocessTests(SimpleTestCase):
         text = 'Бесплатная оценка ремонта за 15 минут.\n\nОценка займёт меньше, чем чашка кофе.'
         self.assertEqual(postprocess_final_result(text), text)
 
+    # Фаза 2а.1: вступления с «вариант…» (замечание 3 судьи)
+    def test_variant_at_end_of_line_cuts_as_intro(self):
+        """«Вот три варианта:» в конце строки — вступление, срезается"""
+        text = ('Вот три варианта:\n\n'
+                'Первый пост.\n\n'
+                'Второй пост.')
+        self.assertEqual(postprocess_final_result(text),
+                         'Первый пост.\n\nВторой пост.')
+
+    def test_variant_before_platform_cuts_as_intro(self):
+        """«Вот вариант для ВКонтакте:» — вступление перед именем площадки"""
+        for intro in ('Вот вариант для ВКонтакте:', 'Готово, вариант для Telegram:',
+                      'Конечно, вариант для Дзена:'):
+            with self.subTest(intro=intro):
+                text = f'{intro}\n\nТыквенный латте уже в меню.'
+                self.assertEqual(postprocess_final_result(text),
+                                 'Тыквенный латте уже в меню.')
+
+    def test_variant_for_date_kept_as_post(self):
+        """«Это удачный вариант для свиданий» — часть поста, не вступление"""
+        text = ('Облепиховый раф\n\n'
+                'Это удачный вариант для свиданий: кислый, с мёдом, с корицей.')
+        self.assertEqual(postprocess_final_result(text), text)
+
+    def test_intro_with_post_keyword_cut_even_with_variant(self):
+        """«Вот вариант поста:» срезается через слово «поста» (как и было)"""
+        text = 'Вот вариант поста для ВКонтакте:\n\nТыквенный латте уже в меню.'
+        self.assertEqual(postprocess_final_result(text), 'Тыквенный латте уже в меню.')
+
+    def test_intro_without_post_keyword_without_variant_kept(self):
+        """«Вот и поступил в меню…» — не вступление: «пост» лишь в составе глагола"""
+        text = ('Вот и поступил в меню наш осенний раф:\n\n'
+                'облепиха, мёд и немного корицы.')
+        self.assertEqual(postprocess_final_result(text), text)
+
+    # Фаза 2а.1: вопрос о самом посте не спасает фразу (замечание 3 судьи)
+    def test_question_about_post_cuts_hope_phrase(self):
+        """Вопрос содержит «пост»/«текст»/«вариант»/«изменить»/«сделаю»/«подходит»/«короче» — срезается"""
+        for question in (
+                'А вы какой пост любите?',
+                'А как вам этот текст?',
+                'Какой вариант больше понравился?',
+                'А вы бы что хотели изменить?',
+                'Напишете, если я сделаю короче?',
+                'Этот подходит?',
+                'А короче?'):
+            with self.subTest(question=question):
+                text = (f'{PostprocessTests.POST}\n\n'
+                        f'Надеюсь, этот пост поможет выбрать напиток. {question}')
+                self.assertEqual(postprocess_final_result(text), PostprocessTests.POST)
+
+    def test_question_for_readers_keeps_hope_phrase(self):
+        """Вопрос не о самом тексте — фраза о посте спасается"""
+        hope = 'Надеюсь, этот пост поможет выбрать напиток. А вы какой берёте?'
+        text = f'{PostprocessTests.POST}\n\n{hope}'
+        self.assertEqual(postprocess_final_result(text), text)
+
     def test_old_format_markers(self):
         text = (
             'Агент-Генератор: черновик про кофейню\n\n'
@@ -885,10 +971,11 @@ class StopPhrasesTests(SimpleTestCase):
                 self.assertTrue(find_stop_phrases(text))
 
     def test_inflected_forms_detected(self):
-        # «уникальную» — не из списка вставленных слов, поэтому «не упустите
-        # … возможность» здесь не второй штамп (повторное ревью фазы 2, замечание 2)
+        # В фазе 2а.1 вставленное прилагательное снова допустимо между словами
+        # штампа: «не упустите <прилагательное> возможность» ловится,
+        # поэтому у «Не упустите уникальную возможность!» два штампа.
         self.assertEqual(find_stop_phrases('Не упустите уникальную возможность!'),
-                         ['уникальная возможность'])
+                         ['уникальная возможность', 'не упустите возможность'])
         self.assertEqual(find_stop_phrases('Не упустите свою возможность!'),
                          ['не упустите возможность'])
         self.assertEqual(find_stop_phrases('Инновационные решения в маникюре'), ['инновационный'])
@@ -927,7 +1014,6 @@ class StopPhrasesTests(SimpleTestCase):
         """
         for text in ('Хочешь узнать, когда привезут новое зерно? Подпишись на канал.',
                      'В наше кафе по утрам заходят студенты.',
-                     'Новый уровень сложности открываем на третьем занятии.',
                      'Индивидуальные занятия и спокойный подход к ученикам.',
                      'Индивидуальные занятия подходят тем, кто стесняется группы.',
                      'Индивидуальная программа подходит даже новичкам.',
@@ -941,6 +1027,68 @@ class StopPhrasesTests(SimpleTestCase):
                      'Просторная раздевалка с душем и феном.'):
             with self.subTest(text=text):
                 self.assertEqual(find_stop_phrases(text), [])
+
+    # Фаза 2а.1: правки поиска штампов (замечание 2 судьи)
+    def test_bolshe_whole_word(self):
+        """«Хотите узнать больше?» ищется целиком: «большевик», «большой» — не штампы"""
+        # Прямой assert на шаблон (раунд исправлений 1, замечание 1 ревью):
+        # ветка `_WHOLE_WORDS` возвращает слово целиком, мутация «убрать ветку,
+        # вернуть к общей основе» даст основу «больш» + окончания существительного
+        # (`больш(?:…|е|…)`) — паттерн изменится, assert упадёт
+        self.assertEqual(gigachat_api._stop_word_pattern('больше'), 'больше')
+        self.assertIn('хотите узнать больше?',
+                      find_stop_phrases('Хотите узнать больше о зерне?'))
+        for text in ('Большевистский кружок собирается по вторникам.',
+                     'Большая кофейня у метро открыла второй зал.',
+                     'Хотите узнать большое меню завтраков?'):
+            with self.subTest(text=text):
+                self.assertEqual(find_stop_phrases(text), [])
+
+    def test_s_dushoy_instrumental_only(self):
+        """«С душой» ловится только в творительном падеже; «с душе», «с душем» — нет"""
+        # Прямой assert на шаблон (раунд исправлений 1, замечание 1 ревью):
+        # ветка `_INSTRUMENTAL_ONLY_STEMS` возвращает основу «душ» + только два
+        # окончания творительного падежа; мутация «убрать ветку, вернуть к общей
+        # основе» даст полный набор окончаний существительного, паттерн
+        # изменится, assert упадёт
+        self.assertEqual(gigachat_api._stop_word_pattern('душой'), 'душ(?:ой|ою)')
+        for text in ('Готовим с душой и без спешки.',
+                     'Пекут с душою — чувствуется в каждом круассане.'):
+            with self.subTest(text=text):
+                self.assertIn('с душой', find_stop_phrases(text))
+        for text in ('Думаю о душе на вечерней прогулке.',
+                     'Просторная кабинка с душем и феном.',
+                     'С душевной музыкой тут всегда уютно.'):
+            with self.subTest(text=text):
+                self.assertEqual(find_stop_phrases(text), [])
+
+    def test_fleeting_vowel_uroven(self):
+        """«Уровень» → ловит «уровня», «уровне», «уровней»: основа с беглой «е»"""
+        for text in ('Выведите бизнес на новый уровень!',
+                     'На новом уровне мы работаем с заказами лично.',
+                     'Выходим на новые уровни общения с клиентами.'):
+            with self.subTest(text=text):
+                self.assertIn('на новый уровень', find_stop_phrases(text))
+
+    def test_adjective_inserted_between_stamp_words(self):
+        """Одно прилагательное между словами штампа допустимо (возврат фазы 2а.1)"""
+        for text, phrase in (
+                ('В нашем современном мире это норма.', 'в современном мире'),
+                ('Не упустите уникальную возможность попробовать.', 'не упустите возможность'),
+                ('Окунитесь в уютную атмосферу осени.', 'окунитесь в атмосферу')):
+            with self.subTest(text=text):
+                self.assertIn(phrase, find_stop_phrases(text))
+
+    def test_min_stem_length_comment(self):
+        """Комментарий у _MIN_STEM_LENGTH описывает поведение, а не отсутствующее правило"""
+        source = (Path(settings.BASE_DIR) / 'generator' / 'gigachat_api.py').read_text(encoding='utf-8')
+        # Комментарий около константы — не вводит в заблуждение: не говорит
+        # про «новый», «хотите», «узнать» как про уловки, они теперь ловятся
+        # через другие механизмы (_WHOLE_WORDS, _FLEETING_WORD_FORMS)
+        idx = source.find('_MIN_STEM_LENGTH = 3')
+        self.assertGreater(idx, 0)
+        surrounding = source[max(0, idx - 400):idx]
+        self.assertNotIn('«новый», «хотите», «узнать»', surrounding)
 
 
 class GigaChatModelTests(SimpleTestCase):
@@ -969,10 +1117,32 @@ class GigaChatModelTests(SimpleTestCase):
                 self.assertIn(f"GIGACHAT_MODEL = os.environ.get('GIGACHAT_MODEL', '{GIGACHAT_LIBRARY_MODEL}')",
                               source)
 
-    @override_settings(GIGACHAT_MODEL='GigaChat-Pro')
-    def test_image_client_without_model_setting(self):
-        """Клиент картинок (_init_direct_client) модель из настроек не получает"""
-        self.assertNotIn('model', self.client_kwargs('_init_direct_client', 'GigaChatDirect'))
+    @override_settings(GIGACHAT_MODEL='GigaChat-Pro', GIGACHAT_IMAGE_MODEL='GigaChat')
+    def test_image_client_uses_explicit_image_model_setting(self):
+        """Клиент картинок получает явную модель из `GIGACHAT_IMAGE_MODEL`, не из `GIGACHAT_MODEL`"""
+        kwargs = self.client_kwargs('_init_direct_client', 'GigaChatDirect')
+        self.assertEqual(kwargs['model'], 'GigaChat')
+        self.assertNotEqual(kwargs['model'], 'GigaChat-Pro')
+
+    def test_image_client_model_defaults_to_library_default(self):
+        """`GIGACHAT_IMAGE_MODEL` по умолчанию — значение библиотеки `gigachat` (`GigaChat`)"""
+        self.assertEqual(settings.GIGACHAT_IMAGE_MODEL, GIGACHAT_LIBRARY_MODEL)
+        for name in ('settings.py', 'production_settings.py'):
+            with self.subTest(settings=name):
+                source = (Path(settings.BASE_DIR) / 'ghostwriter' / name).read_text(encoding='utf-8')
+                self.assertIn(
+                    f"GIGACHAT_IMAGE_MODEL = os.environ.get('GIGACHAT_IMAGE_MODEL', '{GIGACHAT_LIBRARY_MODEL}')",
+                    source,
+                )
+
+    def test_image_client_ignores_gigachat_model_env(self):
+        """patch.dict(os.environ, {'GIGACHAT_MODEL': 'X'}) не меняет модель клиента картинок"""
+        import os as _os
+        with patch.dict(_os.environ, {'GIGACHAT_MODEL': 'GigaChat-Experimental'}):
+            kwargs = self.client_kwargs('_init_direct_client', 'GigaChatDirect')
+        # Передаётся настройка Django, а не переменная окружения
+        self.assertEqual(kwargs['model'], settings.GIGACHAT_IMAGE_MODEL)
+        self.assertNotEqual(kwargs['model'], 'GigaChat-Experimental')
 
 
 @override_settings(DEMO_TOKENS_PER_IP_PER_DAY=1000)
@@ -1015,3 +1185,113 @@ class GeneratorTemplateTests(TestCase):
     def test_ajax_sends_whole_form(self):
         """AJAX отправляет FormData всей формы: новые поля внутри неё уходят на сервер"""
         self.assertIn('new FormData(form)', self.html)
+
+
+# =============================================================================
+# ФАЗА 2а.1: разметка — любой текст от сервера идёт через textContent (замечание 7)
+# =============================================================================
+
+
+# Шаблоны и статика, в которых проверяем правила разметки
+TEMPLATES_DIR = Path(settings.BASE_DIR) / 'generator' / 'templates'
+STATIC_DIR = Path(settings.BASE_DIR) / 'generator' / 'static'
+
+# В этих местах `innerHTML` допустим: очистка, разметка шаблонов, составные
+# цепочки чисел — но строки от сервера туда не попадают. Исключения даны
+# точечно и прокомментированы в самом списке
+INNERHTML_ALLOWLIST = {
+    # Разметка выпадающего списка шаблонов — у шаблонов есть собственное
+    # имя из БД, его экранирует {{ ... }} в шаблоне, в JS эта строка не идёт.
+    # Эта задача закроется в фазе 3.
+    'generator/gigagenerator.html:824': 'имя шаблона из БД, задача фазы 3',
+}
+
+# Переменные от сервера, которые раньше вставлялись в `innerHTML` как есть
+# или с частичным экранированием (замечание 7 ревью безопасности): текст
+# ошибки, сообщений, формы. С фазы 2а.1 эти значения идут в DOM через
+# `textContent`/`createElement`. `data.image_url` и `data.result` экранируются
+# отдельно (есc) и остаются в allow-листе
+SERVER_TEXT_IDENTIFIERS = (
+    r'data\.error',
+    r'data\.message',
+    r'data\.form_errors',
+    r'errMsg',
+    r'\bmsg\b',
+    r'\bmessage\b',
+    r'\berror\b',
+)
+
+
+class ServerTextMarkupTests(SimpleTestCase):
+    """
+    Текст от сервера (`data.error`, `errMsg`, `msg`, `message`, `error`,
+    `data.message`, `data.form_errors`) нигде не попадает в innerHTML.
+    Поиск по всем файлам `generator/templates/` и `generator/static/`
+    """
+
+    SUSPICIOUS_INTERP_RE = re.compile(
+        r'\.innerHTML\s*(?:=|\+=)\s*[^;\n]*?(?:' + r'|'.join(SERVER_TEXT_IDENTIFIERS) + r')'
+    )
+    # Пустая строка, одиночные константные литералы — допустимы (`innerHTML = ''`,
+    # `innerHTML = "<div class=\"...\"></div>"`)
+    EMPTY_CLEAR_RE = re.compile(r"\.innerHTML\s*=\s*['\"]{2}\s*;?")
+
+    def test_no_server_text_in_innerhtml(self):
+        """В templates/ и static/ нет innerHTML с текстом от сервера"""
+        files = list(TEMPLATES_DIR.rglob('*.html'))
+        if STATIC_DIR.exists():
+            files += list(STATIC_DIR.rglob('*.js'))
+        offenders = []
+        for path in files:
+            text = path.read_text(encoding='utf-8')
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                key = f'{path.relative_to(path.parents[2]).as_posix()}:{lineno}'
+                if key in INNERHTML_ALLOWLIST:
+                    continue
+                if self.EMPTY_CLEAR_RE.search(line):
+                    continue
+                if self.SUSPICIOUS_INTERP_RE.search(line):
+                    offenders.append(f'{key}: {line.strip()[:120]}')
+        self.assertEqual(offenders, [], 'innerHTML с текстом от сервера:\n' + '\n'.join(offenders))
+
+    def test_exception_text_not_in_response(self):
+        """
+        <b>MARKER</b> в исключении — не в теле ответа ни одного из четырёх
+        эндпоинтов (замечание 7 ревью безопасности). Подробный тест —
+        в tests.test_demo_access.ErrorNotAsPostTests
+        """
+        from tests.test_demo_access import ErrorNotAsPostTests
+        self.assertTrue(hasattr(ErrorNotAsPostTests, 'test_html_in_exception_not_in_response'))
+
+    def _slice_function_body(self, source, name):
+        """
+        Тело функции `name` целиком — от открывающей `{` до парной закрывающей,
+        посчитанной балансом (учитывает вложенные `if/else`, `addEventListener`,
+        стрелочные колбэки). Нежадный regex `(.*?)^\\s*\\}` в раунде исправлений 1
+        заменён на подсчёт скобок (замечание 3 ревью): останавливался на первой
+        `}` вложенного блока и `innerHTML` ниже в теле пропускал
+        """
+        header = re.search(rf'function\s+{re.escape(name)}\s*\([^)]*\)\s*\{{', source)
+        if header is None:
+            return None
+        start = header.end()
+        depth = 1
+        for i in range(start, len(source)):
+            ch = source[i]
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    return source[start:i]
+        return None
+
+    def test_showtoast_uses_textcontent(self):
+        """`showToast` в обоих шаблонах собирает тело через `textContent`, не `innerHTML`"""
+        for template in ('gigagenerator.html', 'index.html'):
+            path = TEMPLATES_DIR / 'generator' / template
+            source = path.read_text(encoding='utf-8')
+            body = self._slice_function_body(source, 'showToast')
+            self.assertIsNotNone(body, f'нет showToast в {template}')
+            self.assertIn('textContent', body, f'{template}: showToast без textContent')
+            self.assertNotIn('innerHTML', body, f'{template}: showToast всё ещё с innerHTML')

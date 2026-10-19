@@ -562,7 +562,13 @@ form.addEventListener('submit', function(e) {
                         showToast(errMsg, 'danger');
                         var body = document.getElementById('generatedImagesCardBody');
                         if (body && body.querySelector('.py-5')) {
-                            body.querySelector('.py-5').innerHTML = '<div class="alert alert-danger mb-0">' + (errMsg.replace(/</g, '&lt;')) + '</div>';
+                            // textContent, а не innerHTML: сообщение от сервера не попадает в HTML (замечание 7)
+                            var alertBox = document.createElement('div');
+                            alertBox.className = 'alert alert-danger mb-0';
+                            alertBox.textContent = errMsg;
+                            var slot = body.querySelector('.py-5');
+                            slot.textContent = '';
+                            slot.appendChild(alertBox);
                         }
                     }
                 })
@@ -572,7 +578,12 @@ form.addEventListener('submit', function(e) {
                     showToast(msg, 'danger');
                     var body = document.getElementById('generatedImagesCardBody');
                     if (body && body.querySelector('.py-5')) {
-                        body.querySelector('.py-5').innerHTML = '<div class="alert alert-danger mb-0">' + msg + '</div>';
+                        var alertBox = document.createElement('div');
+                        alertBox.className = 'alert alert-danger mb-0';
+                        alertBox.textContent = msg;
+                        var slot = body.querySelector('.py-5');
+                        slot.textContent = '';
+                        slot.appendChild(alertBox);
                     }
                     var rb = body && body.querySelector('#regenImageBtn');
                     if (rb) rb.classList.remove('d-none');
@@ -580,13 +591,23 @@ form.addEventListener('submit', function(e) {
             }
         } else {
             showToast(data.error || 'Ошибка генерации контента', 'danger');
-            var errHtml = '<div class="alert alert-danger mt-4">Ошибка: ' + (data.error || 'Не удалось сгенерировать контент.') + '</div>';
+            // Текст от сервера идёт в DOM через textContent, а не в составе
+            // HTML-строки (замечание 7 ревью безопасности)
+            resultBlock.textContent = '';
+            var alertBox = document.createElement('div');
+            alertBox.className = 'alert alert-danger mt-4';
+            alertBox.textContent = 'Ошибка: ' + (data.error || 'Не удалось сгенерировать контент.');
+            resultBlock.appendChild(alertBox);
             if (data.form_errors) {
-                errHtml += '<ul class="mt-2">';
-                for (var field in data.form_errors) { errHtml += '<li>' + (data.form_errors[field] || []).join(' ').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</li>'; }
-                errHtml += '</ul>';
+                var errList = document.createElement('ul');
+                errList.className = 'mt-2';
+                for (var field in data.form_errors) {
+                    var li = document.createElement('li');
+                    li.textContent = (data.form_errors[field] || []).join(' ');
+                    errList.appendChild(li);
+                }
+                resultBlock.appendChild(errList);
             }
-            resultBlock.innerHTML = errHtml;
         }
     })
     .catch(function(err) {
@@ -594,17 +615,36 @@ form.addEventListener('submit', function(e) {
         btnContent.style.display = '';
         statusBlock.style.display = 'none';
         showToast(err && err.name === 'AbortError' ? 'Превышено время ожидания. Попробуйте снова.' : 'Ошибка при генерации.', 'danger');
-        resultBlock.innerHTML = '<div class="alert alert-danger mt-4">Не удалось выполнить запрос. Проверьте сеть или попробуйте позже.</div>';
+        // Константная строка, но для согласованности собирается через textContent
+        resultBlock.textContent = '';
+        var networkAlert = document.createElement('div');
+        networkAlert.className = 'alert alert-danger mt-4';
+        networkAlert.textContent = 'Не удалось выполнить запрос. Проверьте сеть или попробуйте позже.';
+        resultBlock.appendChild(networkAlert);
     });
 });
 
 // --- UI/UX helpers ---
+// Текст сообщения от сервера ставится через textContent (замечание 7
+// ревью безопасности, фаза 2а.1): структура тоста собирается через
+// createElement, строки с сервера в HTML-разметку не попадают
 function showToast(msg, type='info') {
     if (window.bootstrap) {
-        let toast = document.createElement('div');
+        const toast = document.createElement('div');
         toast.className = `toast align-items-center text-bg-${type} border-0 show position-fixed top-0 end-0 m-3`;
         toast.style.zIndex = 9999;
-        toast.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+        const flex = document.createElement('div');
+        flex.className = 'd-flex';
+        const body = document.createElement('div');
+        body.className = 'toast-body';
+        body.textContent = msg == null ? '' : String(msg);
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'btn-close btn-close-white me-2 m-auto';
+        close.setAttribute('data-bs-dismiss', 'toast');
+        flex.appendChild(body);
+        flex.appendChild(close);
+        toast.appendChild(flex);
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 4000);
     } else {

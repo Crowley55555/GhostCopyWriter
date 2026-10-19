@@ -18,7 +18,13 @@ from datetime import datetime
 # =============================================================================
 from .forms import GenerationForm, LoginForm, PLATFORM_CHOICES
 from .models import Generation, UserProfile, GenerationTemplate, SupportTicket, Review, SupportChat
-from .gigachat_api import generate_text, generate_image_gigachat
+from .gigachat_api import (
+    GigaChatError,
+    MSG_IMAGE_FAILED,
+    MSG_IMAGE_PROMPT_FAILED,
+    generate_text,
+    generate_image_gigachat,
+)
 from .yandex_image_api import generate_image as generate_image_yandex
 from .fastapi_client import generate_text_and_prompt, generate_image
 from .decorators import consume_generation, token_required
@@ -27,11 +33,28 @@ from .access import check_gigachat_access, get_session_token, issue_demo_token, 
 # =============================================================================
 # THIRD PARTY IMPORTS
 # =============================================================================
+import logging
 import os
 import base64
 import re
 import time
 import requests
+
+logger = logging.getLogger(__name__)
+
+# Константные сообщения-ошибки для четырёх эндпоинтов генерации.
+# `str(e)` в ответе пользователю больше не появляется (замечание 7 ревью
+# безопасности): полный текст исключения уходит только в лог. Для ошибок
+# GigaChat сообщение и HTTP-код берутся из `GigaChatError`
+MSG_GENERATION_FAILED = (
+    'Не удалось сгенерировать текст. Сервис генерации временно недоступен, попробуйте позже.'
+)
+MSG_IMAGE_SAVE_FAILED = (
+    'Не удалось сохранить сгенерированное изображение. Попробуйте позже.'
+)
+MSG_IMAGE_NO_DATA = (
+    'GigaChat вернул текст без изображения. Попробуйте изменить тему или повторить позже.'
+)
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -198,15 +221,43 @@ def generator_view(request):
                                                    business_info=form_data.get('business_info'))
                     if denial:
                         return denial
-                    
+
                     # Получаем данные для логирования токенов
                     user = request.user if request.user.is_authenticated else None
                     token = getattr(request, 'token', None)
-                    
-                    # Генерируем текст
-                    result = generate_text(form_data, user=user, token=token)
-                    
-                    # Создаем запись генерации для связи с токенами
+                    image_error = None
+
+                    # Генерация текста. При ошибке GigaChat — отказ без создания
+                    # Generation и без цепочки картинки: ошибка не выдаётся
+                    # за пост (замечание 7 ревью безопасности, фаза 2а.1)
+                    try:
+                        result = generate_text(form_data, user=user, token=token)
+                    except GigaChatError as e:
+                        if token:
+                            request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                            request.session['openai_tokens_used'] = token.openai_tokens_used
+                        if is_ajax:
+                            return JsonResponse({'success': False, 'error': e.message},
+                                                status=e.status_code)
+                        result = e.message
+                        image_url = None
+                        return render(request, 'generator/gigagenerator.html', {
+                            'form': form,
+                            'result': None,
+                            'image_url': None,
+                            'image_urls': [],
+                            'error_message': e.message,
+                            'limit_reached': False,
+                            'is_demo': request.session.get('is_demo', False),
+                            'token': token,
+                            'token_type': request.session.get('token_type', 'DEMO_FREE'),
+                            'gigachat_tokens_limit': request.session.get('gigachat_tokens_limit', -1),
+                            'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                            'openai_tokens_limit': request.session.get('openai_tokens_limit', 0),
+                            'openai_tokens_used': request.session.get('openai_tokens_used', 0),
+                        })
+
+                    # Текст успешно сгенерирован: создаём запись генерации
                     gen = Generation.objects.create(
                         user=user,
                         topic=form_data.get('topic', ''),
@@ -214,23 +265,37 @@ def generator_view(request):
                         image_url=""
                     )
                     generation_id = gen.id
-                    
-                    # Генерируем изображение только если чекбокс выбран
+
+                    # Цепочка картинки: при ошибке — текст отдаётся с пометкой,
+                    # что картинки нет (включая случай «лимит пересечён»)
                     image_data = None
                     image_url = None
                     if generate_image_flag and result:
                         from .gigachat_api import generate_image_prompt_from_text
-                        image_prompt = generate_image_prompt_from_text(result, form_data, user=user, token=token, generation_id=generation_id) if result else None
-                        if image_prompt:
-                            image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
-                        else:
-                            image_data = generate_image_gigachat(form_data.get('topic', ''), user=user, token=token, generation_id=generation_id)
-                    
+                        try:
+                            image_prompt = generate_image_prompt_from_text(
+                                result, form_data, user=user, token=token,
+                                generation_id=generation_id,
+                            ) if result else None
+                            if image_prompt:
+                                image_data = generate_image_gigachat(
+                                    image_prompt, user=user, token=token,
+                                    generation_id=generation_id,
+                                )
+                            else:
+                                image_data = generate_image_gigachat(
+                                    form_data.get('topic', ''), user=user, token=token,
+                                    generation_id=generation_id,
+                                )
+                        except GigaChatError as e:
+                            image_error = e.message
+                            image_data = None
+
                     # Обновляем информацию о токенах в сессии после использования GigaChat
                     if token and is_ajax:
                         request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
                         request.session['openai_tokens_used'] = token.openai_tokens_used
-                    
+
                     if image_data:
                         if image_data.startswith("data:image"):
                             import uuid
@@ -267,7 +332,7 @@ def generator_view(request):
                     # Обновляем существующую запись
                     gen.image_url = image_url or ""
                     gen.save()
-                
+
                 # Сохраняем ID генерации в сессии для последующих перегенераций
                 request.session['current_generation_id'] = gen.id
                 # Сохраняем form_data для перегенерации текста и генерации изображения
@@ -289,6 +354,7 @@ def generator_view(request):
                         'success': True,
                         'result': result,
                         'image_url': image_url,
+                        'image_error': image_error if 'image_error' in locals() else None,
                         'limit_reached': limit_reached,
                         'generation_id': gen.id,
                         'generate_image_flag': generate_image_flag,
@@ -296,9 +362,10 @@ def generator_view(request):
                         'openai_tokens_used': request.session.get('openai_tokens_used', 0)
                     })
             except Exception as e:
-                print(f"Ошибка генерации: {e}")
+                logger.exception('Ошибка генерации в generator_view')
                 if is_ajax:
-                    return JsonResponse({'success': False, 'error': str(e)})
+                    return JsonResponse({'success': False, 'error': MSG_GENERATION_FAILED},
+                                        status=502)
         else:
             if is_ajax:
                 errors = {field: [str(err) for err in errs] for field, errs in form.errors.items()}
@@ -373,14 +440,20 @@ def regenerate_text(request):
             user = request.user if request.user.is_authenticated else None
             token = getattr(request, 'token', None)
 
-            # Генерируем новый текст
-            result = generate_text(form_data, user=user, token=token)
-            
+            # Генерируем новый текст; ошибка GigaChat — отказ, Generation не меняется
+            try:
+                result = generate_text(form_data, user=user, token=token)
+            except GigaChatError as e:
+                if token:
+                    request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                    request.session['openai_tokens_used'] = token.openai_tokens_used
+                return JsonResponse({'success': False, 'error': e.message}, status=e.status_code)
+
             # Обновляем информацию о токенах в сессии
             if token:
                 request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
                 request.session['openai_tokens_used'] = token.openai_tokens_used
-            
+
             # Обновляем существующую запись или создаем новую
             generation_id = request.session.get('current_generation_id')
             if generation_id:
@@ -415,11 +488,11 @@ def regenerate_text(request):
                 'openai_tokens_used': request.session.get('openai_tokens_used', 0)
             })
         except Exception as e:
-            print(f"Ошибка при перегенерации текста: {e}")
+            logger.exception('Ошибка при перегенерации текста')
             return JsonResponse({
                 'success': False,
-                'error': str(e)
-            })
+                'error': MSG_GENERATION_FAILED
+            }, status=502)
     return JsonResponse({
         'success': False,
         'error': 'Метод не поддерживается'
@@ -512,20 +585,29 @@ def generate_image_from_text(request):
                 from .gigachat_api import generate_image_prompt_from_text
                 # Генерируем промпт на основе сгенерированного текста
                 image_prompt = generate_image_prompt_from_text(result_text, form_data, user=user, token=token, generation_id=generation_id)
-            except Exception as e:
-                print(f"Ошибка при генерации промпта: {e}")
-                image_prompt = None
-            
+            except GigaChatError as e:
+                # Ошибка промпта картинки — отказ без последующих вызовов
+                if token:
+                    request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                    request.session['openai_tokens_used'] = token.openai_tokens_used
+                return JsonResponse({'success': False, 'error': e.message}, status=e.status_code)
+
             # Если не удалось сгенерировать промпт, используем простое описание
             if not image_prompt:
                 image_prompt = f"Сделай яркую иллюстрацию для социальной сети на тему: '{topic or result_text[:100]}'. Стиль: цифровая живопись, яркие цвета."
-            
+
             # Пауза между запросом промпта и запросом изображения, чтобы не упираться в 429 GigaChat
             time.sleep(5)
-            
+
             # Запускаем генерацию изображения
             from .gigachat_api import generate_image_gigachat
-            image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
+            try:
+                image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
+            except GigaChatError as e:
+                if token:
+                    request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                    request.session['openai_tokens_used'] = token.openai_tokens_used
+                return JsonResponse({'success': False, 'error': e.message}, status=e.status_code)
             
             if image_data:
                 if image_data.startswith("data:image"):
@@ -561,11 +643,11 @@ def generate_image_from_text(request):
                             'openai_tokens_used': request.session.get('openai_tokens_used', 0)
                         })
                     except Exception as e:
-                        print(f"Ошибка при сохранении base64 изображения: {e}")
+                        logger.exception('Ошибка при сохранении base64 изображения')
                         return JsonResponse({
                             'success': False,
-                            'error': f'Ошибка при сохранении изображения: {str(e)}'
-                        })
+                            'error': MSG_IMAGE_SAVE_FAILED
+                        }, status=502)
                 elif image_data.startswith("http"):
                     # Это URL
                     update_generation_image(request, topic or result_text[:50], image_data)
@@ -592,11 +674,11 @@ def generate_image_from_text(request):
                     'error': 'Не удалось сгенерировать изображение'
                 })
         except Exception as e:
-            print(f"Ошибка при генерации изображения из текста: {e}")
+            logger.exception('Ошибка при генерации изображения из текста')
             return JsonResponse({
                 'success': False,
-                'error': str(e)
-            })
+                'error': MSG_IMAGE_FAILED
+            }, status=502)
     return JsonResponse({
         'success': False,
         'error': 'Метод не поддерживается'
@@ -639,15 +721,24 @@ def regenerate_image(request):
                 from .gigachat_api import generate_image_prompt_from_text
                 # Создаём промпт на основе темы. В качестве "текста" передаём тему, а form_data пустой
                 image_prompt = generate_image_prompt_from_text(topic, {}, user=user, token=token, generation_id=generation_id) if callable(generate_image_prompt_from_text) else None
-            except Exception:
-                image_prompt = None
+            except GigaChatError as e:
+                if token:
+                    request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                    request.session['openai_tokens_used'] = token.openai_tokens_used
+                return JsonResponse({'success': False, 'error': e.message}, status=e.status_code)
 
             # Если не удалось сгенерировать промпт, используем простое описание
             if not image_prompt:
                 image_prompt = f"Сделай яркую иллюстрацию для социальной сети на тему: '{topic}'. Стиль: цифровая живопись, яркие цвета."
 
             # Запускаем генерацию изображения
-            image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
+            try:
+                image_data = generate_image_gigachat(image_prompt, user=user, token=token, generation_id=generation_id)
+            except GigaChatError as e:
+                if token:
+                    request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                    request.session['openai_tokens_used'] = token.openai_tokens_used
+                return JsonResponse({'success': False, 'error': e.message}, status=e.status_code)
             
             if image_data:
                 if image_data.startswith("data:image"):
@@ -763,12 +854,12 @@ def regenerate_image(request):
                 })
             
         except Exception as e:
-            print(f"Ошибка при перегенерации изображения: {e}")
+            logger.exception('Ошибка при перегенерации изображения')
             return JsonResponse({
                 'success': False,
-                'error': str(e)
-            })
-    
+                'error': MSG_IMAGE_FAILED
+            }, status=502)
+
     return JsonResponse({
         'success': False,
         'error': 'Метод не поддерживается'

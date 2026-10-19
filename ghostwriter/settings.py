@@ -216,6 +216,10 @@ GIGACHAT_DAILY_CALL_LIMIT = int(os.environ.get('GIGACHAT_DAILY_CALL_LIMIT', '50'
 # не получает, но библиотека gigachat сама читает переменную окружения
 # с этим именем
 GIGACHAT_MODEL = os.environ.get('GIGACHAT_MODEL', 'GigaChat')
+# Модель клиента картинок задаётся отдельной настройкой: иначе библиотека
+# `gigachat` сама читает `GIGACHAT_MODEL` из окружения, и картинки побегут
+# на выбранный пользователем Pro. По умолчанию — значение библиотеки `GigaChat`
+GIGACHAT_IMAGE_MODEL = os.environ.get('GIGACHAT_IMAGE_MODEL', 'GigaChat')
 
 # Максимальная длина пользовательского ввода, который уходит в промпт
 GENERATION_MAX_TOPIC_LENGTH = int(os.environ.get('GENERATION_MAX_TOPIC_LENGTH', '500'))

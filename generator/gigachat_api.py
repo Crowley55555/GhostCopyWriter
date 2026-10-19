@@ -1,3 +1,4 @@
+import logging
 import os
 import base64
 import re
@@ -10,6 +11,8 @@ from langchain_gigachat.chat_models import GigaChat
 from langchain_core.messages import SystemMessage, HumanMessage
 from gigachat import GigaChat as GigaChatDirect
 from gigachat.models import Chat, Messages, MessagesRole
+
+logger = logging.getLogger(__name__)
 
 try:
     from gigachat.exceptions import ResponseError as GigaChatResponseError
@@ -90,13 +93,18 @@ def _init_client():
     )
 
 def _init_direct_client():
-    """Инициализация прямого клиента GigaChat для генерации изображений"""
+    """
+    Клиент картинок GigaChat. Модель задаётся явно из `settings.GIGACHAT_IMAGE_MODEL`,
+    чтобы она не менялась скрыто через переменную окружения `GIGACHAT_MODEL`,
+    которую сама библиотека `gigachat` читает по префиксу.
+    """
     credentials = _get_credentials()
     if not credentials:
         raise ValueError("GigaChat credentials не настроены")
     return GigaChatDirect(
         credentials=credentials,
         scope=SCOPE,
+        model=settings.GIGACHAT_IMAGE_MODEL,
         verify_ssl_certs=False,
         timeout=300  # 5 минут для изображений (они генерируются дольше)
     )
@@ -139,6 +147,17 @@ STOP_PHRASES = [
     "стучится в двери",
 ]
 
+# Правила из `idea/mvp.md`, п. 5: слова клиента — только из его отзыва во вводе;
+# в чувствительных темах — без обещаний результата. Строки-константы, чтобы
+# тесты могли проверить присутствие в собранном промпте без зависимости от текста
+SYSTEM_PROMPT_FACTS_FROM_INPUT = (
+    "Слова клиента — только из текста отзыва во вводе, без дописанных деталей."
+)
+SYSTEM_PROMPT_NO_HEALTH_GUARANTEES = (
+    "В медицинских, косметологических и финансовых темах описывай услугу "
+    "без гарантий результата."
+)
+
 SYSTEM_PROMPT = """Ты — автор постов для соцсетей малого бизнеса: кофеен, салонов, мастерских, студий, магазинов у дома. Пишешь от имени бизнеса — так, как о своём деле рассказал бы сам владелец.
 
 Как писать:
@@ -147,6 +166,8 @@ SYSTEM_PROMPT = """Ты — автор постов для соцсетей ма
 - Бери конкретику из темы и описания бизнеса: что именно продаётся или происходит, для кого, чем отличается. Одна живая деталь лучше трёх общих слов.
 - Если в описании бизнеса сказано, как говорить (на «ты» или на «вы», с юмором или серьёзно, от первого лица), следуй ему: это важнее настроек ниже.
 - Не выдумывай то, чего нет во вводе: цены, скидки, акции, сроки, адреса, телефоны, ссылки, часы работы, имена, отзывы и цифры. Нет детали — обойдись без неё.
+- {facts_from_input}
+- {no_health_guarantees}
 - Не обещай того, чего нет во вводе: «без очередей», «за 15 минут», пользу для здоровья. Способ связи — только из ввода; если его нет, зови в комментарии или в личные сообщения.
 - Без преувеличений и громких обещаний. Говори прямо, без метафор и красивостей.
 - Не используй штампы: {stop_phrases}. Их перефразировки тоже не подходят."""
@@ -417,7 +438,11 @@ def assemble_prompt_from_criteria(data):
     (GenerationForm.clean); здесь в промпт идут только заполненные.
     """
     stop_phrases = ', '.join(f'«{phrase}»' for phrase in STOP_PHRASES)
-    parts = [SYSTEM_PROMPT.format(stop_phrases=stop_phrases)]
+    parts = [SYSTEM_PROMPT.format(
+        stop_phrases=stop_phrases,
+        facts_from_input=SYSTEM_PROMPT_FACTS_FROM_INPUT,
+        no_health_guarantees=SYSTEM_PROMPT_NO_HEALTH_GUARANTEES,
+    )]
 
     platform = PLATFORM_RULES.get(data.get('platform'))
     format_lines = (platform['rules'] if platform else []) + _setting_phrases(data, FORMAT_SETTINGS)
@@ -510,16 +535,43 @@ _STRIP_ENDINGS = (
     (('ого', 'ому', 'ыми', 'ый', 'ий', 'ая', 'ое', 'ые', 'ую', 'ым', 'ом', 'ых'), _ADJECTIVE_ENDINGS),
     (_NOUN_ENDINGS, _NOUN_ENDINGS),
 )
-# Основа короче — слово ищется целиком: «новый», «хотите», «узнать»
+# Слова со слишком короткой основой (из двух букв) ищутся целиком. Для
+# «новый», «хотите» без этого окончание прилагательного или глагола сразу
+# совпадало бы с окончанием слова — основа не оставалась бы
 _MIN_STEM_LENGTH = 3
-# Слова, которые допускаются между словами штампа: «не упустите свой шанс»,
-# «в нашем современном мире». Другие слова — уже другая фраза:
-# «в нашей студии время», «индивидуальные занятия подходят»
-_STOP_PHRASE_INSERTED_WORD = r'(?:сво[йюие]|(?:ваш|наш)(?:а|е|и|у|его|ей|ему|им|ими|ем|их)?|этот|эту|эти|это)'
+# Слова штампа, которые ищутся целиком и не склоняются: «хотите узнать больше?» —
+# «больше» не должно ловить «большевик», «большой», «большая»
+_WHOLE_WORDS = frozenset({'больше'})
+# Слова с беглой гласной в основе: «уровень» в именительном падеже сохраняет
+# «е» перед «нь», в остальных падежах «е» выпадает («уровня», «уровне»,
+# «уровней»). Простая основа «уровн» не ловит «уровень», поэтому формы
+# перечислены явно
+_FLEETING_WORD_FORMS = {
+    'уровень': r'(?:уровень|уровня|уровне|уровней|уровню|уровнем|уровни|уровням|уровнях|уровнями)',
+}
+# Слова, которые ищутся только творительным падежом: «с душой», «с душою»;
+# «с душе», «с душем», «с душевностью» не ловятся
+_INSTRUMENTAL_ONLY_STEMS = {'душой': ('душ', ('ой', 'ою'))}
+# Между словами штампа допускается либо короткое слово из закрытого списка
+# («сво…», «наш…», «ваш…», «эт…»), либо «никого», либо одно слово с окончанием
+# прилагательного («в нашем современном мире», «не упустите уникальную
+# возможность»). Другие слова — уже другая фраза
+_STOP_PHRASE_INSERTED_ADJECTIVE = r'\w+(?:' + '|'.join(_ADJECTIVE_ENDINGS) + r')'
+_STOP_PHRASE_INSERTED_WORD = (
+    r'(?:сво[йюие]|(?:ваш|наш)(?:а|е|и|у|его|ей|ему|им|ими|ем|их)?|'
+    r'этот|эту|эти|это|никого|' + _STOP_PHRASE_INSERTED_ADJECTIVE + r')'
+)
 
 
 def _stop_word_pattern(word):
     """Шаблон слова штампа: основа и окончание той же части речи"""
+    if word in _WHOLE_WORDS:
+        return re.escape(word)
+    if word in _INSTRUMENTAL_ONLY_STEMS:
+        stem, endings = _INSTRUMENTAL_ONLY_STEMS[word]
+        return re.escape(stem) + '(?:' + '|'.join(endings) + ')'
+    if word in _FLEETING_WORD_FORMS:
+        return _FLEETING_WORD_FORMS[word]
     if len(word) <= 2:
         return re.escape(word)
     for strip_endings, match_endings in _STRIP_ENDINGS:
@@ -636,7 +688,38 @@ def log_token_usage(operation_type, prompt_text, response_text, generation_id=No
         print(f"Ошибка при логировании токенов: {e}")
 
 
+# Константа оставлена для внутренних путей (например, скрипта прогона фазы 2);
+# в ответах пользователю WARNING-строки больше не появляются — ошибки GigaChat
+# превращаются в `GigaChatError` с константным русским сообщением
 GIGACHAT_LIMIT_WARNING = "WARNING: Лимит токенов GigaChat исчерпан. Пожалуйста, обновите подписку или выберите другой тариф."
+
+# Константные сообщения-ошибки, которые показываются пользователю. Полный
+# `str(e)` уходит только в лог через `logger.exception`
+MSG_GENERATION_FAILED = (
+    'Не удалось сгенерировать текст. Сервис генерации временно недоступен, попробуйте позже.'
+)
+MSG_IMAGE_PROMPT_FAILED = (
+    'Не удалось подготовить описание для изображения. Попробуйте позже.'
+)
+MSG_IMAGE_FAILED = (
+    'Не удалось сгенерировать изображение. Попробуйте позже.'
+)
+MSG_GIGACHAT_LIMIT_REACHED = 'Лимит токенов GigaChat исчерпан. Генерация недоступна.'
+
+
+class GigaChatError(Exception):
+    """
+    Ошибка GigaChat, предназначенная для показа пользователю
+
+    `message` — константная строка на русском без технических подробностей
+    (её view возвращает как `error`), `status_code` — HTTP-код ответа
+    (502/503 для ошибок апстрима, 429 — для исчерпанного лимита токена).
+    """
+
+    def __init__(self, message, status_code=502):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
 
 
 def _gigachat_limit_reached(token):
@@ -688,11 +771,20 @@ _OLD_FORMAT_RE = re.compile(r'^\s*[*_]{0,2}\s*(?:агент(?:-\w+)?\s*\d*|кр�
 # «Вот и поступил в меню…» — начало поста
 _INTRO_RE = re.compile(r'^\s*(?:конечно|вот|хорошо|отлично|ниже|держите|готово)\b.*:\s*$', re.IGNORECASE)
 _INTRO_POST_RE = re.compile(r'\b(?:пост|поста|текст|текста|стать[яюи])\b', re.IGNORECASE)
-# Вступление с «вариант…» — только про варианты поста («Вот два варианта поста:»)
-# или перед меткой «Вариант 1»: «Вот несколько вариантов осеннего ухода:» — начало поста
+# Вступление с «вариант…» — только:
+#  - про варианты поста («Вот два варианта поста:»);
+#  - перед меткой «Вариант 1»;
+#  - «вариант» в конце строки («Вот три варианта:»);
+#  - «вариант» перед именем площадки («Вот вариант для ВКонтакте:»).
+# Иначе «Вот несколько вариантов осеннего ухода:» срезалось бы как начало поста
 _INTRO_VARIANT_RE = re.compile(r'\bвариант\w*', re.IGNORECASE)
 _INTRO_VARIANT_OF_POST_RE = re.compile(r'\bвариант\w*\s+(?:поста|постов|текста|текстов|статьи|статей)\b',
                                        re.IGNORECASE)
+_INTRO_VARIANT_END_RE = re.compile(r'\bвариант\w*\s*:\s*$', re.IGNORECASE)
+_INTRO_VARIANT_FOR_PLATFORM_RE = re.compile(
+    r'\bвариант\w*\s+для\s+(?:вконтакте|telegram|телеграм\w*|дзена|дзен)',
+    re.IGNORECASE,
+)
 # Пояснения и служебные блоки после поста. Ищутся только в последнем абзаце:
 # с такой строки он отрезается до конца.
 # Служебные метки (и старые «Критик», «Агент-…:») — всегда
@@ -733,14 +825,50 @@ def _is_variant_1(line):
 
 def _is_intro(line, next_line):
     """
-    Вступление модели перед постом. «Вариант…» — только про варианты поста
-    или перед «Вариант 1»; иначе нужно слово «пост», «текст», «статья»
+    Вступление модели перед постом. «Вариант…» — только про варианты поста,
+    перед «Вариант 1», с «вариант…:» в конце строки или перед именем площадки
+    («Вот вариант для ВКонтакте:»); иначе нужно слово «пост», «текст», «статья»
     """
     if not _INTRO_RE.match(line):
         return False
     if _INTRO_VARIANT_RE.search(line):
-        return bool(_INTRO_VARIANT_OF_POST_RE.search(line)) or _is_variant_1(next_line)
+        return (
+            bool(_INTRO_VARIANT_OF_POST_RE.search(line))
+            or _is_variant_1(next_line)
+            or bool(_INTRO_VARIANT_END_RE.search(line))
+            or bool(_INTRO_VARIANT_FOR_PLATFORM_RE.search(line))
+        )
     return bool(_INTRO_POST_RE.search(line))
+
+
+# Слова в вопросе читателям, по которым видно, что вопрос — о самом тексте
+# поста, а не о его теме. При таких словах фраза «надеюсь, этот пост…»
+# срезается вместе с вопросом (замечание 3 судьи)
+_QUESTION_ABOUT_POST_RE = re.compile(
+    r'\b(?:пост|поста|постом|тексту?|тексте|вариант\w*|измен\w+|сдела\w+|подходит|короче)\b',
+    re.IGNORECASE,
+)
+# Вопросительное предложение: от предыдущей границы (. ! ? ; или начало строки)
+# до «?». В строке может быть несколько: «Этот пост поможет. А вы какой любите?»
+_QUESTION_SENTENCE_RE = re.compile(r'(?:^|[.!?;])\s*([^.!?;]*\?)')
+
+
+def _question_is_for_readers(lines):
+    """
+    Вопрос читателям спасает фразу о посте только если он не о самом тексте.
+    Проверяем именно вопросительное предложение (от предыдущего знака конца
+    предложения до «?»), а не всю строку: иначе «Надеюсь, этот пост поможет.
+    А вы какой берёте?» срезалось бы из-за «пост» в соседнем предложении
+    """
+    for line in lines:
+        if '?' not in line:
+            continue
+        questions = _QUESTION_SENTENCE_RE.findall(line)
+        if not questions:
+            # Запасной случай: вся строка — один вопрос, без терминаторов
+            questions = [line]
+        return not any(_QUESTION_ABOUT_POST_RE.search(q) for q in questions)
+    return False
 
 
 def _tail_start(lines, start):
@@ -748,12 +876,12 @@ def _tail_start(lines, start):
     Первая строка пояснения после поста среди lines[start:] или None
 
     Служебная метка срезается всегда, фраза о самом посте — если после неё
-    нет вопроса читателям
+    нет вопроса читателям о теме поста (вопрос о самом тексте фразу не спасает)
     """
     for i in range(start, len(lines)):
         if _TAIL_LABEL_RE.match(lines[i]):
             return i
-        if _TAIL_PHRASE_RE.match(lines[i]) and not any('?' in line for line in lines[i:]):
+        if _TAIL_PHRASE_RE.match(lines[i]) and not _question_is_for_readers(lines[i:]):
             return i
     return None
 
@@ -840,36 +968,39 @@ def postprocess_final_result(text, platform=None):
 def generate_text(data, user=None, token=None, generation_id=None):
     """
     Генерирует текст через GigaChat API
-    
+
+    Любая ошибка — исключение `GigaChatError` с константным сообщением
+    без технических подробностей и HTTP-кодом ответа. Строка `WARNING: …`
+    из апстрима в ответ пользователю больше не попадает.
+
     Args:
         data: Параметры генерации
         user: Пользователь Django (опционально, для логирования)
         token: TemporaryAccessToken (опционально, для логирования)
         generation_id: ID генерации (опционально, для логирования)
-    
+
     Returns:
         str: Сгенерированный текст
+
+    Raises:
+        GigaChatError: исчерпан лимит токена или сбой GigaChat
     """
     if _gigachat_limit_reached(token):
-        return GIGACHAT_LIMIT_WARNING
+        raise GigaChatError(MSG_GIGACHAT_LIMIT_REACHED, status_code=429)
     try:
-        print("Инициализация клиента GigaChat для генерации текста...")
         giga = _init_client()
-        print("Клиент успешно инициализирован")
         system_prompt = assemble_prompt_from_criteria(data)
         user_message = build_user_message(data)
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_message)
         ]
-        
+
         # Подготовка промпта для логирования
         full_prompt = f"{system_prompt}\n\n{user_message}"
-        
-        print("Отправка запроса на генерацию текста...")
+
         resp = giga.invoke(messages)
-        print("Текст успешно сгенерирован")
-        
+
         # --- Постобработка: убираем подписи и промежуточные этапы ---
         clean_result = postprocess_final_result(resp.content, data.get('platform'))
 
@@ -888,16 +1019,8 @@ def generate_text(data, user=None, token=None, generation_id=None):
 
         return clean_result
     except Exception as e:
-        print(f"Ошибка при генерации текста: {e}")
-        print(f"Тип ошибки: {type(e)}")
-        if "429" in str(e) or "Too Many Requests" in str(e):
-            return "WARNING: Превышен лимит запросов к GigaChat. Попробуйте позже."
-        elif "401" in str(e) or "Unauthorized" in str(e):
-            return "WARNING: Ошибка аутентификации. Проверьте настройки GigaChat."
-        elif "403" in str(e) or "Forbidden" in str(e):
-            return "WARNING: Доступ запрещен. Проверьте права доступа к GigaChat."
-        else:
-            return f"WARNING: Ошибка при генерации текста: {str(e)[:100]}"
+        logger.exception('Ошибка при генерации текста через GigaChat')
+        raise GigaChatError(MSG_GENERATION_FAILED, status_code=502) from None
 
 def generate_image_prompt_from_text(text, form_data, user=None, token=None, generation_id=None):
     """
@@ -915,7 +1038,7 @@ def generate_image_prompt_from_text(text, form_data, user=None, token=None, gene
         str: Промпт для генерации изображения
     """
     if _gigachat_limit_reached(token):
-        return None
+        raise GigaChatError(MSG_GIGACHAT_LIMIT_REACHED, status_code=429)
     try:
         giga = _init_client()
         # Системный промпт для визуального генератора
@@ -962,8 +1085,8 @@ def generate_image_prompt_from_text(text, form_data, user=None, token=None, gene
 
         return result
     except Exception as e:
-        print(f"Ошибка при генерации промпта для изображения: {e}")
-        return None
+        logger.exception('Ошибка при генерации промпта для изображения')
+        raise GigaChatError(MSG_IMAGE_PROMPT_FAILED, status_code=502) from None
 
 # Модифицированная функция генерации изображения
 
@@ -981,9 +1104,8 @@ def generate_image_gigachat(image_prompt, user=None, token=None, generation_id=N
         str: Base64 изображение или None
     """
     if _gigachat_limit_reached(token):
-        return None
+        raise GigaChatError(MSG_GIGACHAT_LIMIT_REACHED, status_code=429)
     try:
-        print("Инициализация клиента GigaChat для генерации изображения...")
         giga = _init_direct_client()
         print("Клиент для изображений успешно инициализирован")
         time.sleep(1)
@@ -1040,19 +1162,14 @@ def generate_image_gigachat(image_prompt, user=None, token=None, generation_id=N
         file_id = extract_image_id(response_content)
         if file_id:
             return download_image(giga, file_id)
-        else:
-            print("Не удалось извлечь ID изображения из ответа")
-            return None
-    except Exception as e:
-        print(f"Ошибка при генерации изображения через GigaChat: {e}")
-        print(f"Тип ошибки: {type(e)}")
-        if "429" in str(e) or "Too Many Requests" in str(e):
-            print("Превышен лимит запросов к GigaChat")
-        elif "401" in str(e) or "Unauthorized" in str(e):
-            print("Ошибка аутентификации GigaChat")
-        elif "403" in str(e) or "Forbidden" in str(e):
-            print("Доступ запрещен к GigaChat")
+        # Модель не вернула картинку в ответе — не ошибка апстрима, а отказ
+        # модели от задачи; эндпоинт /regenerate-image/ сообщает про это отдельно
         return None
+    except GigaChatError:
+        raise
+    except Exception as e:
+        logger.exception('Ошибка при генерации изображения через GigaChat')
+        raise GigaChatError(MSG_IMAGE_FAILED, status_code=502) from None
 
 def extract_image_id(response_content):
     """Извлекает ID изображения из HTML-ответа GigaChat"""

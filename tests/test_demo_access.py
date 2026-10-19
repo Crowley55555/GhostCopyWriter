@@ -33,12 +33,22 @@ from django.utils import timezone
 
 from generator.access import check_gigachat_access
 from generator.gigachat_api import (
+    GigaChatError,
+    MSG_GENERATION_FAILED as API_MSG_GENERATION_FAILED,
+    MSG_GIGACHAT_LIMIT_REACHED,
+    MSG_IMAGE_FAILED as API_MSG_IMAGE_FAILED,
+    MSG_IMAGE_PROMPT_FAILED,
     generate_image_gigachat,
     generate_image_prompt_from_text,
     generate_text,
     log_token_usage,
 )
-from generator.models import GigaChatTokenUsage, TemporaryAccessToken
+from generator.models import Generation, GigaChatTokenUsage, TemporaryAccessToken
+from generator.views import (
+    MSG_GENERATION_FAILED,
+    MSG_IMAGE_FAILED,
+    MSG_IMAGE_SAVE_FAILED,
+)
 from tests.helpers import FakeGigaChat, fake_gigachat, postgres_varchar_lengths
 
 AJAX = {'HTTP_X_REQUESTED_WITH': 'XMLHttpRequest'}
@@ -834,12 +844,13 @@ class GigaChatFunctionLimitTests(TestCase):
         values.update(fields)
         return TemporaryAccessToken.objects.create(**values)
 
-    def assert_limit_result(self, name, result):
-        """Результат функции, которая вышла без обращения к клиенту"""
-        if name == 'generate_text':
-            self.assertTrue(result.startswith('WARNING: Лимит токенов GigaChat исчерпан'), result)
-        else:
-            self.assertIsNone(result)
+    def assert_raises_limit(self, name, call, token):
+        """После пересечения лимита функция поднимает GigaChatError (429), а не возвращает WARNING"""
+        from generator.gigachat_api import GigaChatError
+        with self.assertRaises(GigaChatError) as cm:
+            call(token)
+        self.assertEqual(cm.exception.status_code, 429)
+        self.assertNotIn('WARNING', cm.exception.message)
 
     def test_no_client_calls_without_limit(self):
         """Исчерпанный, истёкший или неактивный токен: 0 обращений у всех трёх функций"""
@@ -853,14 +864,12 @@ class GigaChatFunctionLimitTests(TestCase):
             for name, call in self.CALLS.items():
                 with self.subTest(case=case, function=name):
                     with fake_gigachat() as fake:
-                        result = call(token)
-
+                        self.assert_raises_limit(name, call, token)
                     self.assertEqual(fake.calls, 0)
-                    self.assert_limit_result(name, result)
         self.assertEqual(GigaChatTokenUsage.objects.count(), 0)
 
     def test_crossing_call_returns_result(self):
-        """Вызов, пересёкший лимит, отдаёт результат и учтён; следующий — без обращения"""
+        """Вызов, пересёкший лимит, отдаёт результат и учтён; следующий — поднимает GigaChatError"""
         expected = {
             'generate_text': FakeGigaChat.TEXT,
             'generate_image_prompt_from_text': FakeGigaChat.TEXT,
@@ -874,13 +883,13 @@ class GigaChatFunctionLimitTests(TestCase):
 
                 with fake_gigachat() as fake:
                     result = call(token)
-                    repeat = call(token)
-
-                self.assertEqual(result, expected[name])
-                self.assertEqual(fake.calls, 1)
-                self.assertEqual(GigaChatTokenUsage.objects.filter(token=token).count(), 1)
-                self.assertFalse(token.can_use_gigachat()[0])
-                self.assert_limit_result(name, repeat)
+                    self.assertEqual(result, expected[name])
+                    self.assertEqual(fake.calls, 1)
+                    self.assertEqual(GigaChatTokenUsage.objects.filter(token=token).count(), 1)
+                    self.assertFalse(token.can_use_gigachat()[0])
+                    self.assert_raises_limit(name, call, token)
+                    # Повторный вызов без обращения к клиенту
+                    self.assertEqual(fake.calls, 1)
 
 
 class CheckGigachatAccessTests(TestCase):
@@ -1061,3 +1070,187 @@ class ConsumeSemanticsTests(TestCase):
         self.assertFalse(token.consume_openai_tokens(50))
         self.assertTrue(token.consume_openai_tokens(40))
         self.assertEqual(self.stored(token).openai_tokens_used, 100)
+
+
+# =============================================================================
+# ФАЗА 2а.1: ошибка GigaChat не выдаётся за пост
+# =============================================================================
+
+
+class ErrorFakeGigaChat:
+    """
+    Клиент GigaChat, у которого invoke/chat бросают заданное исключение
+
+    В отличие от FakeGigaChat, здесь ошибка имитирует сбой апстрима:
+    401, 403, 429, таймаут или просто «что-то пошло не так».
+    """
+
+    def __init__(self, exc):
+        self.exc = exc
+        self.invoke_calls = 0
+        self.chat_calls = 0
+
+    @property
+    def calls(self):
+        return self.invoke_calls + self.chat_calls
+
+    def invoke(self, messages):
+        self.invoke_calls += 1
+        raise self.exc
+
+    def chat(self, payload):
+        self.chat_calls += 1
+        raise self.exc
+
+    def get_image(self, file_id):
+        return None
+
+
+@contextmanager
+def error_gigachat(exc):
+    """Клиент GigaChat, который бросает `exc` на любой запрос"""
+    fake = ErrorFakeGigaChat(exc)
+    with ExitStack() as stack:
+        stack.enter_context(patch('generator.gigachat_api._init_client', return_value=fake))
+        stack.enter_context(patch('generator.gigachat_api._init_direct_client', return_value=fake))
+        stack.enter_context(patch('generator.gigachat_api.time.sleep'))
+        yield fake
+
+
+# Четыре типа ошибок апстрима, которые ловила старая логика (возвращая
+# «WARNING: …») и которые теперь должны превращаться в константное сообщение
+UPSTREAM_ERRORS = {
+    '401': Exception('401 Unauthorized: credentials rejected'),
+    '403': Exception('403 Forbidden: insufficient rights'),
+    '429': Exception('429 Too Many Requests: upstream throttling'),
+    'timeout': TimeoutError('upstream read timeout'),
+    'generic': RuntimeError('что-то пошло не так <b>MARKER</b>'),
+}
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), DEMO_TOKENS_PER_IP_PER_DAY=1000)
+class ErrorNotAsPostTests(TestCase):
+    """Ошибка GigaChat на четырёх эндпоинтах — не пост, а константное сообщение"""
+
+    EXPECTED_MESSAGE_BY_ENDPOINT = {
+        '/generator/': MSG_GENERATION_FAILED,
+        '/regenerate-text/': API_MSG_GENERATION_FAILED,
+        '/generate-image-from-text/': MSG_IMAGE_PROMPT_FAILED,
+        '/regenerate-image/': MSG_IMAGE_PROMPT_FAILED,
+    }
+
+    def demo_client(self):
+        client, _ = try_demo()
+        set_last_form_data(client)
+        return client
+
+    def test_each_endpoint_each_error(self):
+        """4 эндпоинта × 5 типов ошибок: ответ-константа, 502, нет WARNING и нет MARKER"""
+        for url, data in GENERATION_ENDPOINTS.items():
+            for label, exc in UPSTREAM_ERRORS.items():
+                with self.subTest(url=url, error=label):
+                    GigaChatTokenUsage.objects.all().delete()
+                    Generation.objects.all().delete()
+                    client = self.demo_client()
+                    token = demo_token_of(client)
+                    initial_used = token.gigachat_tokens_used
+
+                    with error_gigachat(exc) as fake:
+                        response = client.post(url, data, **AJAX)
+
+                    # 1. Ответ — отказ с константным сообщением
+                    self.assertEqual(response.status_code, 502,
+                                     f'{url}/{label}: ожидался 502, получили {response.status_code}')
+                    body = response.json()
+                    self.assertFalse(body['success'])
+                    self.assertEqual(body['error'],
+                                     self.EXPECTED_MESSAGE_BY_ENDPOINT[url],
+                                     f'{url}/{label}')
+                    # 2. Нет «WARNING:» в теле ответа (прежнее поведение)
+                    raw = response.content.decode('utf-8')
+                    self.assertNotIn('WARNING', raw, f'{url}/{label}')
+                    # 3. Текст исключения («MARKER», str(e), подробности) не ушёл в ответ
+                    self.assertNotIn('MARKER', raw, f'{url}/{label}')
+                    self.assertNotIn('<b>', raw, f'{url}/{label}')
+                    # 4. Фейк не вызвался больше одного раза для первой функции
+                    #    цепочки эндпоинта; промпт картинки и картинка — не вызваны
+                    #    на /generator/ при ошибке текста
+                    if url == '/generator/':
+                        self.assertEqual(fake.invoke_calls, 1,
+                                         f'{url}/{label}: лишние invoke')
+                        self.assertEqual(fake.chat_calls, 0,
+                                         f'{url}/{label}: вызвали chat после ошибки текста')
+                    # 5. Generation не создан
+                    self.assertEqual(Generation.objects.count(), 0,
+                                     f'{url}/{label}: Generation записан на ошибку')
+                    # 6. GigaChatTokenUsage не изменился: ошибка не пишет строку учёта
+                    self.assertEqual(GigaChatTokenUsage.objects.count(), 0,
+                                     f'{url}/{label}: ошибка попала в учёт')
+                    # 7. Расход с токена не списался
+                    token.refresh_from_db()
+                    self.assertEqual(token.gigachat_tokens_used, initial_used,
+                                     f'{url}/{label}: токен списан на ошибку')
+
+    def test_html_in_exception_not_in_response(self):
+        """Расширенная проверка замечания 7: <b>MARKER</b> в исключении — не в теле ответа"""
+        marker_exc = RuntimeError('<b>MARKER</b>')
+        for url, data in GENERATION_ENDPOINTS.items():
+            with self.subTest(url=url):
+                client = self.demo_client()
+                with error_gigachat(marker_exc):
+                    response = client.post(url, data, **AJAX)
+
+                raw = response.content.decode('utf-8')
+                self.assertNotIn('MARKER', raw)
+                self.assertNotIn('<b>', raw)
+                self.assertNotIn('&lt;b&gt;', raw)
+
+    def test_limit_in_chain_raises_429_not_warning(self):
+        """Если `_gigachat_limit_reached` до вызова — 429 и константа лимита, не пост-WARNING"""
+        # Исчерпанный токен в сессии, но check_gigachat_access перехватит это
+        # с кодом 429 (MSG_TOKEN_LIMIT из access). Отдельно проверим прямой
+        # вызов функций: GigaChatError(429) без текста WARNING.
+        from generator.gigachat_api import GigaChatError
+        token = TemporaryAccessToken.objects.create(
+            token_type='DEMO_FREE', gigachat_tokens_limit=100,
+            gigachat_tokens_used=100, openai_tokens_limit=0,
+        )
+        with self.assertRaises(GigaChatError) as cm:
+            generate_text({'topic': TOPIC}, token=token)
+        self.assertEqual(cm.exception.status_code, 429)
+        self.assertEqual(cm.exception.message, MSG_GIGACHAT_LIMIT_REACHED)
+        self.assertNotIn('WARNING', cm.exception.message)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), DEMO_TOKENS_PER_IP_PER_DAY=1000)
+class ChainWithImageNearLimitTests(TestCase):
+    """
+    У края лимита: текст сгенерирован, картинка пропущена с понятной пометкой.
+    Дополняет `CallChainAccountingTests.test_generator_with_image_near_limit`
+    """
+
+    def near_limit_client(self):
+        client, _ = try_demo()
+        set_last_form_data(client)
+        token = demo_token_of(client)
+        token.gigachat_tokens_used = token.gigachat_tokens_limit - 1
+        token.save()
+        return client, token
+
+    def test_image_error_message_mentions_limit(self):
+        """Ответ содержит текст и пометку: картинка не создана из-за лимита; WARNING нет"""
+        client, token = self.near_limit_client()
+
+        with fake_gigachat() as fake:
+            response = client.post('/generator/', dict(LAST_FORM_DATA, generate_image='on'), **AJAX)
+
+        data = response.json()
+        self.assertTrue(data['success'], data)
+        self.assertEqual(data['result'], FakeGigaChat.TEXT)
+        self.assertIsNone(data['image_url'])
+        # Пометка про лимит, а не WARNING
+        self.assertIn('image_error', data)
+        self.assertEqual(data['image_error'], MSG_GIGACHAT_LIMIT_REACHED)
+        self.assertNotIn('WARNING', response.content.decode('utf-8'))
+        # Промпт и картинка не вызваны
+        self.assertEqual((fake.invoke_calls, fake.chat_calls), (1, 0))
