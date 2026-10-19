@@ -205,7 +205,7 @@
   - 10 реальных тем малого бизнеса (салон, кофейня, автосервис, мастер и т. п.): в ответах нет штампов из стоп-листа; владелец смотрит 10 постов и подтверждает, что их не стыдно показать.
 - **Ревью:** независимый рецензент — промпт, форма, тесты.
 
-### [ ] Фаза 2а.1: ошибка не выдаётся за пост, правила промпта (1 день)
+### [x] Фаза 2а.1: ошибка не выдаётся за пост, правила промпта (1 день)
 
 Источник: `idea/plan-impact.md`, раздел 1, п. 4 и раздел 5, п. 1; отложенное судьёй из ревью фазы 2, раунд 3, замечания 1–3.
 
@@ -855,6 +855,10 @@
   - **Команда тестов и результат.** `DJANGO_SETTINGS_MODULE=ghostwriter.test_settings PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe manage.py test tests.test_django_models tests.test_django_isolated tests.test_demo_access tests.test_post_quality` — было `Ran 190 tests` / `OK`, стало `Ran 190 tests in 2.485s` / `OK` (число не изменилось: правки — assert'ы и хелпер внутри существующих тестов, новых методов `test_*` не добавлено). `manage.py check --settings=ghostwriter.settings` — `System check identified no issues (0 silenced)`. `makemigrations --dry-run --settings=ghostwriter.settings` — только старый дрейф `0020_rename_generator_g_operati…` (без изменений, фаза 2а.2).
   - **Генераций GigaChat:** 0 (правки — чисто в тестах, живой клиент не вызывался).
   - **Фазу `[x]` не отмечаю** — это делает оркестратор после прогона и коммита фазы (как указано в промпте раунда).
+
+- 2026-10-20 (оркестратор): **фаза 2а.1 закрыта.** Прогон тестов на основной копии перед коммитом: `Ran 190 tests in 2.664s`, `OK`. `git diff --stat` показал 11 изменённых файлов (`generator/gigachat_api.py`, `generator/views.py`, два шаблона, три настройки, `plans/zapusk-demo-reviews/phase-2-samples.md`, `plans/2026-10-06-zapusk-demo.md`, `tests/test_demo_access.py`, `tests/test_post_quality.py`) + 2 новых (`plans/zapusk-demo-reviews/phase-2a-1.md`, `plans/zapusk-demo-prompts/phase-2a-1-fix-1.md`). Коммит фазы — поимённо в `dev`, 13 файлов. Границы: `generator/forms.py`, `generator/models.py`, миграции, лендинг, `tests/runner.py`, `idea/`, `.env`, `.dev_token`, `ssl/` не тронуты (сверено). Push — по разрешению владельца от 2026-10-19.
+- 2026-10-20 (оркестратор): генерации по плану — 61 (фаза 2) + 3 (фаза 2а.1) = **64 из 160**; остаётся 96. YandexGPT — 0 из 25 (фаза 2а.2 расходует до 15).
+- 2026-10-20 (оркестратор): **следующий шаг — фаза 2а.2** (меню «Модель» и YandexGPT). Промпты пишутся отдельной итерацией.
 
 ## Возможные доработки после запуска демо
 
