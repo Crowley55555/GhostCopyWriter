@@ -66,14 +66,14 @@ python manage.py create_dev_token --name="Ваше Имя"
 >> DEVELOPER token uspeshno sozdan!
 ======================================================================
 Razrabotchik: Ваше Имя
-Token: fef1edac-d4eb-4edc-b718-6b8b3f07527a
+Token: <DEV_TOKEN>
 Tip: Bessrochniy (bezlimit)
 Sozdan: 11.01.2026 19:24:27
 Istekaet: 18.12.2125 (bessrochniy)
 ======================================================================
 >> VASHA SSYLKA DOSTUPA:
 ======================================================================
-http://localhost:8000/auth/token/fef1edac-d4eb-4edc-b718-6b8b3f07527a/
+http://localhost:8000/auth/token/<DEV_TOKEN>/
 ======================================================================
 ```
 
@@ -687,13 +687,13 @@ curl -X POST http://localhost:8000/api/tokens/create/ \
 Получить информацию о токене
 
 ```bash
-curl http://localhost:8000/api/tokens/fef1edac-d4eb-4edc-b718-6b8b3f07527a/
+curl http://localhost:8000/api/tokens/<DEV_TOKEN>/
 ```
 
 **Response:**
 ```json
 {
-  "token": "fef1edac-d4eb-4edc-b718-6b8b3f07527a",
+  "token": "<DEV_TOKEN>",
   "token_type": "DEVELOPER",
   "is_active": true,
   "expires_at": "2125-12-18T23:59:59Z",
