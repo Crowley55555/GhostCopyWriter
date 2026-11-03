@@ -233,11 +233,30 @@ BEHIND_PROXY = os.environ.get('BEHIND_PROXY', 'False').lower() in ('true', '1', 
 DEMO_TOKENS_PER_IP_PER_DAY = int(os.environ.get('DEMO_TOKENS_PER_IP_PER_DAY', '3'))
 DEMO_GIGACHAT_TOKENS_LIMIT = int(os.environ.get('DEMO_GIGACHAT_TOKENS_LIMIT', '20000'))
 GIGACHAT_DAILY_CALL_LIMIT = int(os.environ.get('GIGACHAT_DAILY_CALL_LIMIT', '50'))
+GIGACHAT_PRO_DAILY_CALL_LIMIT = int(os.environ.get('GIGACHAT_PRO_DAILY_CALL_LIMIT', '25'))
+YANDEX_DAILY_CALL_LIMIT = int(os.environ.get('YANDEX_DAILY_CALL_LIMIT', '50'))
+
 GIGACHAT_MODEL = os.environ.get('GIGACHAT_MODEL', 'GigaChat')
+GIGACHAT_PRO_MODEL = os.environ.get('GIGACHAT_PRO_MODEL', 'GigaChat-2-Pro')
 # Модель клиента картинок задаётся отдельной настройкой: иначе библиотека
 # `gigachat` сама читает `GIGACHAT_MODEL` из окружения, и картинки побегут
 # на выбранный пользователем Pro. По умолчанию — значение библиотеки `GigaChat`
 GIGACHAT_IMAGE_MODEL = os.environ.get('GIGACHAT_IMAGE_MODEL', 'GigaChat')
+
+# Credentials читаются через settings (замечание 4 ревью безопасности)
+GIGACHAT_CREDENTIALS = os.environ.get('GIGACHAT_CREDENTIALS', '')
+GIGACHAT_CLIENT_ID = os.environ.get('GIGACHAT_CLIENT_ID', '')
+GIGACHAT_CLIENT_SECRET = os.environ.get('GIGACHAT_CLIENT_SECRET', '')
+GIGACHAT_SCOPE = os.environ.get('GIGACHAT_SCOPE', 'GIGACHAT_API_PERS')
+
+# YandexGPT (замечание 5 ревью безопасности)
+YANDEX_API_KEY = os.environ.get('YANDEX_API_KEY', '')
+YANDEX_FOLDER_ID = os.environ.get('YANDEX_FOLDER_ID', '')
+YANDEX_GPT_MODEL = os.environ.get('YANDEX_GPT_MODEL', 'yandexgpt-lite')
+YANDEX_CONNECT_TIMEOUT = float(os.environ.get('YANDEX_CONNECT_TIMEOUT', '10'))
+YANDEX_READ_TIMEOUT = float(os.environ.get('YANDEX_READ_TIMEOUT', '60'))
+YANDEX_MAX_TOKENS = int(os.environ.get('YANDEX_MAX_TOKENS', '2000'))
+
 GENERATION_MAX_TOPIC_LENGTH = int(os.environ.get('GENERATION_MAX_TOPIC_LENGTH', '500'))
 GENERATION_MAX_TEXT_LENGTH = int(os.environ.get('GENERATION_MAX_TEXT_LENGTH', '6000'))
 GENERATION_MAX_BUSINESS_INFO_LENGTH = int(os.environ.get('GENERATION_MAX_BUSINESS_INFO_LENGTH', '500'))

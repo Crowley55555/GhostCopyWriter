@@ -12,6 +12,20 @@ PLATFORM_CHOICES = [
     ("Дзен", "Дзен"),
 ]
 
+# Меню «Модель» — закрытый список (замечание 1 ревью безопасности):
+# значения из POST, которых здесь нет, отклоняются формой. Код совпадает
+# с `generator.models.GigaChatTokenUsage.PROVIDER_CHOICES` — повторяется,
+# чтобы форма не импортировала модели.
+MODEL_GIGACHAT_LITE = 'gigachat-lite'
+MODEL_GIGACHAT_PRO = 'gigachat-pro'
+MODEL_YANDEXGPT = 'yandexgpt'
+MODEL_CHOICES = [
+    (MODEL_GIGACHAT_LITE, 'GigaChat Lite'),
+    (MODEL_GIGACHAT_PRO, 'GigaChat Pro'),
+    (MODEL_YANDEXGPT, 'YandexGPT'),
+]
+MODEL_DEFAULT = MODEL_GIGACHAT_LITE
+
 # 12 необязательных настроек поста (блок «Дополнительно»)
 SETTING_FIELDS = (
     'voice_tone', 'content_purpose', 'emotional_tone', 'content_format',
@@ -69,6 +83,21 @@ class GenerationForm(forms.Form):
             'max_length': "«О бизнесе» — не больше %(limit_value)d символов (сейчас %(show_value)d).",
         },
     )
+    # Меню «Модель»: закрытый список, по умолчанию Lite. Пустое — Lite.
+    # Форма допускает `yandexgpt`, доступность ключа проверяет view
+    model = forms.ChoiceField(
+        choices=MODEL_CHOICES,
+        label="Модель",
+        required=False,
+        initial=MODEL_DEFAULT,
+        error_messages={
+            'invalid_choice': "Выберите модель: GigaChat Lite, GigaChat Pro или YandexGPT.",
+        },
+    )
+
+    def clean_model(self):
+        """Пустое — по умолчанию Lite"""
+        return self.cleaned_data.get('model') or MODEL_DEFAULT
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

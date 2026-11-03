@@ -13,8 +13,17 @@ import os
 import secrets
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Единое место загрузки `.env` для dev-настроек (замечание 4 ревью безопасности).
+# `override=False`: процессные переменные важнее файла, их не затирает `.env`.
+# Файл ищется только в корне проекта — без поиска вверх по дереву (`load_dotenv()`
+# без пути уходил бы в родительскую папку и подтягивал бы чужой `.env`).
+# В `test_settings.py`, `production_settings.py`, `wsgi.py` этот вызов не нужен.
+load_dotenv(BASE_DIR / '.env', override=False)
 
 
 # Quick-start development settings - unsuitable for production
@@ -208,18 +217,43 @@ DEMO_TOKENS_PER_IP_PER_DAY = int(os.environ.get('DEMO_TOKENS_PER_IP_PER_DAY', '3
 # Лимит GigaChat демо-токена (в оценочных токенах, как estimate_tokens)
 DEMO_GIGACHAT_TOKENS_LIMIT = int(os.environ.get('DEMO_GIGACHAT_TOKENS_LIMIT', '20000'))
 
-# Общий потолок: вызовов GigaChat (строк GigaChatTokenUsage) за последние 24 часа
+# Общий потолок: все вызовы GigaChat (строк GigaChatTokenUsage с provider=
+# gigachat-lite / gigachat-pro) за последние 24 часа; Pro входит в этот потолок
 GIGACHAT_DAILY_CALL_LIMIT = int(os.environ.get('GIGACHAT_DAILY_CALL_LIMIT', '50'))
+# Отдельный потолок только для текста Pro — Pro входит и в GIGACHAT_DAILY_CALL_LIMIT
+GIGACHAT_PRO_DAILY_CALL_LIMIT = int(os.environ.get('GIGACHAT_PRO_DAILY_CALL_LIMIT', '25'))
+# Потолок YandexGPT (замечание 1 ревью безопасности): отдельный, не считается с GigaChat
+YANDEX_DAILY_CALL_LIMIT = int(os.environ.get('YANDEX_DAILY_CALL_LIMIT', '50'))
 
-# Модель GigaChat для текста поста и промпта картинки. По умолчанию — та же,
-# что библиотека gigachat берёт без настройки (Lite). Клиент картинок её
+# Модель GigaChat для текста поста и промпта картинки (Lite). По умолчанию — та же,
+# что библиотека gigachat берёт без настройки. Клиент картинок её
 # не получает, но библиотека gigachat сама читает переменную окружения
 # с этим именем
 GIGACHAT_MODEL = os.environ.get('GIGACHAT_MODEL', 'GigaChat')
+# Модель Pro — выбирается пользователем через меню «Модель»
+GIGACHAT_PRO_MODEL = os.environ.get('GIGACHAT_PRO_MODEL', 'GigaChat-2-Pro')
 # Модель клиента картинок задаётся отдельной настройкой: иначе библиотека
 # `gigachat` сама читает `GIGACHAT_MODEL` из окружения, и картинки побегут
 # на выбранный пользователем Pro. По умолчанию — значение библиотеки `GigaChat`
 GIGACHAT_IMAGE_MODEL = os.environ.get('GIGACHAT_IMAGE_MODEL', 'GigaChat')
+
+# Credentials GigaChat — читаются через settings, не напрямую из os.environ
+# в gigachat_api (замечание 4 ревью безопасности). Пустые строки допустимы.
+GIGACHAT_CREDENTIALS = os.environ.get('GIGACHAT_CREDENTIALS', '')
+GIGACHAT_CLIENT_ID = os.environ.get('GIGACHAT_CLIENT_ID', '')
+GIGACHAT_CLIENT_SECRET = os.environ.get('GIGACHAT_CLIENT_SECRET', '')
+GIGACHAT_SCOPE = os.environ.get('GIGACHAT_SCOPE', 'GIGACHAT_API_PERS')
+
+# YandexGPT — второй провайдер (исключение из принципа 4, решение владельца
+# 2026-10-08). Без ключа или каталога пункт меню не показывается, запрос
+# с моделью `yandexgpt` → 400 без обращения к сети
+YANDEX_API_KEY = os.environ.get('YANDEX_API_KEY', '')
+YANDEX_FOLDER_ID = os.environ.get('YANDEX_FOLDER_ID', '')
+YANDEX_GPT_MODEL = os.environ.get('YANDEX_GPT_MODEL', 'yandexgpt-lite')
+# Таймауты и предел ответа — для безопасного клиента YandexGPT (замечание 5)
+YANDEX_CONNECT_TIMEOUT = float(os.environ.get('YANDEX_CONNECT_TIMEOUT', '10'))
+YANDEX_READ_TIMEOUT = float(os.environ.get('YANDEX_READ_TIMEOUT', '60'))
+YANDEX_MAX_TOKENS = int(os.environ.get('YANDEX_MAX_TOKENS', '2000'))
 
 # Максимальная длина пользовательского ввода, который уходит в промпт
 GENERATION_MAX_TOPIC_LENGTH = int(os.environ.get('GENERATION_MAX_TOPIC_LENGTH', '500'))

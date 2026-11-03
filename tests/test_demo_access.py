@@ -739,7 +739,10 @@ class LongTopicAccountingTests(TestCase):
         platform_max = GigaChatTokenUsage._meta.get_field('platform').max_length
 
         with postgres_varchar_lengths(GigaChatTokenUsage):
+            # provider — обязательный keyword-only параметр с 2026-11-03
+            # (раунд исправлений 2а.2, замечание 3): хрупкий дефолт убран
             log_token_usage('TEXT_GENERATION', 'промпт', 'ответ',
+                            provider=GigaChatTokenUsage.PROVIDER_GIGACHAT_LITE,
                             topic='т' * (self.max_length + 1),
                             platform='п' * (platform_max + 1))
 

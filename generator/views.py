@@ -16,7 +16,16 @@ from datetime import datetime
 # =============================================================================
 # PROJECT IMPORTS
 # =============================================================================
-from .forms import GenerationForm, LoginForm, PLATFORM_CHOICES
+from .forms import (
+    GenerationForm,
+    LoginForm,
+    MODEL_CHOICES,
+    MODEL_DEFAULT,
+    MODEL_GIGACHAT_LITE,
+    MODEL_GIGACHAT_PRO,
+    MODEL_YANDEXGPT,
+    PLATFORM_CHOICES,
+)
 from .models import Generation, UserProfile, GenerationTemplate, SupportTicket, Review, SupportChat
 from .gigachat_api import (
     GigaChatError,
@@ -25,10 +34,26 @@ from .gigachat_api import (
     generate_text,
     generate_image_gigachat,
 )
+from .yandexgpt_api import (
+    MSG_YANDEX_NOT_CONFIGURED,
+    YandexGPTError,
+    generate_text_yandex,
+)
 from .yandex_image_api import generate_image as generate_image_yandex
 from .fastapi_client import generate_text_and_prompt, generate_image
 from .decorators import consume_generation, token_required
-from .access import check_gigachat_access, get_session_token, issue_demo_token, start_token_session
+from .access import (
+    MSG_MODEL_UNAVAILABLE,
+    PROVIDER_GIGACHAT_LITE,
+    PROVIDER_GIGACHAT_PRO,
+    PROVIDER_YANDEXGPT,
+    check_gigachat_access,
+    check_provider_ceiling,
+    check_text_access,
+    get_session_token,
+    issue_demo_token,
+    start_token_session,
+)
 
 # =============================================================================
 # THIRD PARTY IMPORTS
@@ -55,6 +80,74 @@ MSG_IMAGE_SAVE_FAILED = (
 MSG_IMAGE_NO_DATA = (
     'GigaChat вернул текст без изображения. Попробуйте изменить тему или повторить позже.'
 )
+
+
+# Выбор провайдера и клиента текста по значению из формы «Модель»
+_PROVIDER_BY_MODEL = {
+    MODEL_GIGACHAT_LITE: PROVIDER_GIGACHAT_LITE,
+    MODEL_GIGACHAT_PRO: PROVIDER_GIGACHAT_PRO,
+    MODEL_YANDEXGPT: PROVIDER_YANDEXGPT,
+}
+
+
+def available_text_models():
+    """
+    Какие модели показывать в меню (замечание 5 ревью безопасности)
+
+    Без ключа YandexGPT пункт в разметке скрыт; при этом форма допускает
+    `yandexgpt`, а view отвечает 400 с сообщением `MSG_MODEL_UNAVAILABLE`
+    или `MSG_YANDEX_NOT_CONFIGURED`.
+    """
+    yandex_ready = bool(
+        getattr(settings, 'YANDEX_API_KEY', '')
+        and getattr(settings, 'YANDEX_FOLDER_ID', '')
+    )
+    return [
+        (value, label)
+        for value, label in MODEL_CHOICES
+        if value != MODEL_YANDEXGPT or yandex_ready
+    ]
+
+
+def _extract_denial_message(response):
+    """
+    Текст сообщения из ответа `check_text_access`
+
+    `deny` возвращает JsonResponse с `data.error` или редирект; картинка
+    у YandexGPT после упёршегося потолка GigaChat — не ошибка цепочки,
+    а подпись «картинка не создана из-за лимита». Для JSON берём `error`;
+    для редиректа — общий текст лимита
+    """
+    try:
+        import json
+        payload = json.loads(response.content.decode('utf-8'))
+        return payload.get('error', MSG_IMAGE_FAILED)
+    except Exception:
+        from .access import MSG_DAILY_LIMIT
+        return MSG_DAILY_LIMIT
+
+
+def _run_text_model(model_code, form_data, user, token):
+    """
+    Один путь текста для всех трёх моделей
+
+    Системный промпт и сообщение пользователя строит `gigachat_api`
+    (единые для всех провайдеров). Клиент выбирается по `model_code`.
+    Исключения `GigaChatError`/`YandexGPTError` общего контракта
+    (`.message`, `.status_code`) пробрасываются наверх.
+    """
+    if model_code == MODEL_GIGACHAT_PRO:
+        return generate_text(
+            form_data, user=user, token=token,
+            provider=PROVIDER_GIGACHAT_PRO,
+            model=settings.GIGACHAT_PRO_MODEL,
+        )
+    if model_code == MODEL_YANDEXGPT:
+        return generate_text_yandex(form_data, user=user, token=token)
+    return generate_text(
+        form_data, user=user, token=token,
+        provider=PROVIDER_GIGACHAT_LITE,
+    )
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -168,115 +261,121 @@ def generator_view(request):
     # Инициализация переменных
     result = None
     image_url = None
+    image_error = None
     limit_reached = False
     # «О бизнесе» из сессии подставляется в форму (сохраняется после успешной отправки)
     form = GenerationForm(request.POST or None, initial={'business_info': request.session.get('business_info', '')})
-    generator_type = request.POST.get('generator_type', 'gigachat')  # Новый параметр
     generate_image_flag = request.POST.get('generate_image', 'off') == 'on'  # Чекбокс генерации изображения
     if request.method == 'POST':
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        # Меню «Модель» заменило переключатель `generator_type` (решение
+        # владельца 2026-10-08). Старое значение `openai` / неизвестное →
+        # 400, ни один клиент не вызван (замечание 1 ревью безопасности)
+        requested_model = request.POST.get('model', MODEL_DEFAULT) or MODEL_DEFAULT
+        allowed = {value for value, _ in MODEL_CHOICES}
+        if requested_model not in allowed:
+            return JsonResponse(
+                {'success': False, 'error': MSG_MODEL_UNAVAILABLE},
+                status=400,
+            )
+        # YandexGPT без ключа — 400 до вызова (замечание 5 ревью безопасности)
+        if requested_model == MODEL_YANDEXGPT and not (
+            getattr(settings, 'YANDEX_API_KEY', '')
+            and getattr(settings, 'YANDEX_FOLDER_ID', '')
+        ):
+            return JsonResponse(
+                {'success': False, 'error': MSG_YANDEX_NOT_CONFIGURED},
+                status=400,
+            )
         if form.is_valid():
             try:
                 form_data = form.cleaned_data.copy()
-                if generator_type == 'openai':
-                    # Проверяем доступность Flask API
-                    if not check_flask_api_status():
-                        if is_ajax:
-                            return JsonResponse({
-                                'success': False, 
-                                'error': 'Flask Generator не запущен. Запустите Flask приложение на порту 5000.'
-                            })
-                        else:
-                            result = "ERROR: Flask Generator не запущен. Запустите Flask приложение на порту 5000."
-                            image_url = None
+                form_data['model'] = requested_model
+                provider_code = _PROVIDER_BY_MODEL[requested_model]
+
+                # Единая проверка до первого обращения — по провайдеру
+                # ФАКТИЧЕСКОГО вызова (замечание 1 ревью безопасности)
+                denial = check_text_access(
+                    request,
+                    provider_code=provider_code,
+                    topic=form_data.get('topic'),
+                    business_info=form_data.get('business_info'),
+                )
+                if denial:
+                    return denial
+
+                # Получаем данные для логирования токенов
+                user = request.user if request.user.is_authenticated else None
+                token = getattr(request, 'token', None)
+
+                # Генерация текста. При ошибке — отказ без создания Generation
+                # и без цепочки картинки: ошибка не выдаётся за пост
+                try:
+                    result = _run_text_model(requested_model, form_data, user, token)
+                except (GigaChatError, YandexGPTError) as e:
+                    if token:
+                        request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                        request.session['openai_tokens_used'] = token.openai_tokens_used
+                    if is_ajax:
+                        return JsonResponse({'success': False, 'error': e.message},
+                                            status=e.status_code)
+                    return render(request, 'generator/gigagenerator.html', {
+                        'form': form,
+                        'result': None,
+                        'image_url': None,
+                        'image_urls': [],
+                        'error_message': e.message,
+                        'limit_reached': False,
+                        'available_models': available_text_models(),
+                        'is_demo': request.session.get('is_demo', False),
+                        'token': token,
+                        'token_type': request.session.get('token_type', 'DEMO_FREE'),
+                        'gigachat_tokens_limit': request.session.get('gigachat_tokens_limit', -1),
+                        'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
+                        'openai_tokens_limit': request.session.get('openai_tokens_limit', 0),
+                        'openai_tokens_used': request.session.get('openai_tokens_used', 0),
+                    })
+
+                # Текст успешно сгенерирован: создаём запись генерации
+                gen = Generation.objects.create(
+                    user=user,
+                    topic=form_data.get('topic', ''),
+                    result=result or "",
+                    image_url=""
+                )
+                generation_id = gen.id
+
+                # Цепочка картинки: при ошибке — текст отдаётся с пометкой.
+                # Картинки ВСЕГДА GigaChat, независимо от выбранной модели
+                # (решение владельца; замечание 1 ревью безопасности —
+                # проверка потолка GigaChat идёт отдельно, перед вызовом).
+                # Это именно потолок провайдера, не полный `check_text_access`:
+                # лимит токена уже проверит `_token_limit_reached` внутри
+                # `generate_image_prompt_from_text` и даст свой текст
+                image_data = None
+                image_url = None
+                if generate_image_flag and result:
+                    gigachat_ceiling = check_provider_ceiling(PROVIDER_GIGACHAT_LITE)
+                    if gigachat_ceiling is not None:
+                        message, _status = gigachat_ceiling
+                        # Потолок GigaChat исчерпан — картинку не делаем.
+                        # Пометка `image_error` в ответе; текст уже отдан
+                        image_error = message
                     else:
-                        try:
-                            # Получаем токен для учёта OpenAI токенов
-                            token = getattr(request, 'token', None)
-                            
-                            # Генератор через Flask API
-                            gen_result = generate_text_and_prompt(form_data, token=token)
-                            result = gen_result.get('text')
-                            image_prompt = gen_result.get('image_prompt')
-                            image_url = generate_image(image_prompt, token=token) if image_prompt else None
-                            
-                            # Обновляем информацию о токенах в сессии после использования
-                            if token and is_ajax:
-                                request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
-                                request.session['openai_tokens_used'] = token.openai_tokens_used
-                        except Exception as e:
-                            print(f"Ошибка Flask API: {e}")
-                            if is_ajax:
-                                return JsonResponse({
-                                    'success': False, 
-                                    'error': f'Ошибка Flask API: {str(e)}'
-                                })
-                            else:
-                                result = f"ERROR: Ошибка Flask API: {str(e)}"
-                                image_url = None
-                else:
-                    # Старый генератор Gigachat
-                    # Единая проверка до первого обращения к GigaChat
-                    denial = check_gigachat_access(request, topic=form_data.get('topic'),
-                                                   business_info=form_data.get('business_info'))
-                    if denial:
-                        return denial
-
-                    # Получаем данные для логирования токенов
-                    user = request.user if request.user.is_authenticated else None
-                    token = getattr(request, 'token', None)
-                    image_error = None
-
-                    # Генерация текста. При ошибке GigaChat — отказ без создания
-                    # Generation и без цепочки картинки: ошибка не выдаётся
-                    # за пост (замечание 7 ревью безопасности, фаза 2а.1)
-                    try:
-                        result = generate_text(form_data, user=user, token=token)
-                    except GigaChatError as e:
-                        if token:
-                            request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
-                            request.session['openai_tokens_used'] = token.openai_tokens_used
-                        if is_ajax:
-                            return JsonResponse({'success': False, 'error': e.message},
-                                                status=e.status_code)
-                        result = e.message
-                        image_url = None
-                        return render(request, 'generator/gigagenerator.html', {
-                            'form': form,
-                            'result': None,
-                            'image_url': None,
-                            'image_urls': [],
-                            'error_message': e.message,
-                            'limit_reached': False,
-                            'is_demo': request.session.get('is_demo', False),
-                            'token': token,
-                            'token_type': request.session.get('token_type', 'DEMO_FREE'),
-                            'gigachat_tokens_limit': request.session.get('gigachat_tokens_limit', -1),
-                            'gigachat_tokens_used': request.session.get('gigachat_tokens_used', 0),
-                            'openai_tokens_limit': request.session.get('openai_tokens_limit', 0),
-                            'openai_tokens_used': request.session.get('openai_tokens_used', 0),
-                        })
-
-                    # Текст успешно сгенерирован: создаём запись генерации
-                    gen = Generation.objects.create(
-                        user=user,
-                        topic=form_data.get('topic', ''),
-                        result=result or "",
-                        image_url=""
-                    )
-                    generation_id = gen.id
-
-                    # Цепочка картинки: при ошибке — текст отдаётся с пометкой,
-                    # что картинки нет (включая случай «лимит пересечён»)
-                    image_data = None
-                    image_url = None
-                    if generate_image_flag and result:
                         from .gigachat_api import generate_image_prompt_from_text
                         try:
                             image_prompt = generate_image_prompt_from_text(
                                 result, form_data, user=user, token=token,
                                 generation_id=generation_id,
                             ) if result else None
+                            # Повторная проверка потолка перед вызовом картинки
+                            # (раунд исправлений 2а.2, замечание 2): промпт
+                            # картинки уже писал строку учёта — следующий вызов
+                            # картинки без второй проверки обходит потолок на 1
+                            second_ceiling = check_provider_ceiling(PROVIDER_GIGACHAT_LITE)
+                            if second_ceiling is not None:
+                                message, status = second_ceiling
+                                raise GigaChatError(message, status_code=status)
                             if image_prompt:
                                 image_data = generate_image_gigachat(
                                     image_prompt, user=user, token=token,
@@ -291,35 +390,35 @@ def generator_view(request):
                             image_error = e.message
                             image_data = None
 
-                    # Обновляем информацию о токенах в сессии после использования GigaChat
-                    if token and is_ajax:
-                        request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
-                        request.session['openai_tokens_used'] = token.openai_tokens_used
+                # Обновляем информацию о токенах в сессии после использования LLM
+                if token and is_ajax:
+                    request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                    request.session['openai_tokens_used'] = token.openai_tokens_used
 
-                    if image_data:
-                        if image_data.startswith("data:image"):
-                            import uuid
-                            filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
-                            full_path = os.path.join(settings.MEDIA_ROOT, filename)
-                            os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-                            base64_data = image_data.split(',')[1]
-                            image_bytes = base64.b64decode(base64_data)
+                if image_data:
+                    if image_data.startswith("data:image"):
+                        import uuid
+                        filename = f"generated_{uuid.uuid4().hex[:8]}.jpg"
+                        full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                        base64_data = image_data.split(',')[1]
+                        image_bytes = base64.b64decode(base64_data)
+                        with open(full_path, "wb") as f:
+                            f.write(image_bytes)
+                        image_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
+                    elif image_data.startswith("http"):
+                        image_url = image_data
+                    else:
+                        filename = f"generated_{form_data.get('topic', '')[:20].replace(' ', '_')}.jpg"
+                        full_path = os.path.join(settings.MEDIA_ROOT, filename)
+                        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+                        try:
+                            image_bytes = base64.b64decode(image_data)
                             with open(full_path, "wb") as f:
                                 f.write(image_bytes)
                             image_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
-                        elif image_data.startswith("http"):
-                            image_url = image_data
-                        else:
-                            filename = f"generated_{form_data.get('topic', '')[:20].replace(' ', '_')}.jpg"
-                            full_path = os.path.join(settings.MEDIA_ROOT, filename)
-                            os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
-                            try:
-                                image_bytes = base64.b64decode(image_data)
-                                with open(full_path, "wb") as f:
-                                    f.write(image_bytes)
-                                image_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
-                            except Exception as e:
-                                image_url = None
+                        except Exception:
+                            image_url = None
                 # Обновляем запись генерации с изображением (если она уже создана)
                 if 'generation_id' not in locals():
                     gen = Generation.objects.create(
@@ -354,7 +453,7 @@ def generator_view(request):
                         'success': True,
                         'result': result,
                         'image_url': image_url,
-                        'image_error': image_error if 'image_error' in locals() else None,
+                        'image_error': image_error,
                         'limit_reached': limit_reached,
                         'generation_id': gen.id,
                         'generate_image_flag': generate_image_flag,
@@ -383,11 +482,12 @@ def generator_view(request):
     image_urls = [u.strip() for u in (image_url or '').split('|') if u and u.strip()] if image_url else []
     
     return render(request, 'generator/gigagenerator.html', {
-        'form': form, 
-        'result': result, 
-        'image_url': image_url, 
+        'form': form,
+        'result': result,
+        'image_url': image_url,
         'image_urls': image_urls,
         'limit_reached': limit_reached,
+        'available_models': available_text_models(),
         'is_demo': is_demo,
         'token': token,
         'token_type': token_type,
@@ -431,19 +531,33 @@ def regenerate_text(request):
                     'error': MSG_NOTHING_TO_REGENERATE
                 }, status=400)
             topic = form_data['topic']
-            # Единая проверка до первого обращения к GigaChat
-            denial = check_gigachat_access(request, topic=topic,
-                                           business_info=form_data.get('business_info'))
+            # Перегенерация идёт в ту же модель, что первая генерация.
+            # Данные до 2а.2 — без ключа `model`: по умолчанию Lite.
+            # YandexGPT без ключа тоже уходит в Lite — иначе 400 там, где
+            # фаза 1 отдавала бы текст (чувствительнее к падениям ревью)
+            requested_model = form_data.get('model', MODEL_DEFAULT) or MODEL_DEFAULT
+            if requested_model not in dict(MODEL_CHOICES):
+                requested_model = MODEL_DEFAULT
+            if requested_model == MODEL_YANDEXGPT and not (
+                getattr(settings, 'YANDEX_API_KEY', '')
+                and getattr(settings, 'YANDEX_FOLDER_ID', '')
+            ):
+                requested_model = MODEL_DEFAULT
+            provider_code = _PROVIDER_BY_MODEL[requested_model]
+            denial = check_text_access(request,
+                                       provider_code=provider_code,
+                                       topic=topic,
+                                       business_info=form_data.get('business_info'))
             if denial:
                 return denial
             # Получаем токен для учёта токенов
             user = request.user if request.user.is_authenticated else None
             token = getattr(request, 'token', None)
 
-            # Генерируем новый текст; ошибка GigaChat — отказ, Generation не меняется
+            # Генерируем новый текст; ошибка — отказ, Generation не меняется
             try:
-                result = generate_text(form_data, user=user, token=token)
-            except GigaChatError as e:
+                result = _run_text_model(requested_model, form_data, user, token)
+            except (GigaChatError, YandexGPTError) as e:
                 if token:
                     request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
                     request.session['openai_tokens_used'] = token.openai_tokens_used
@@ -599,6 +713,18 @@ def generate_image_from_text(request):
             # Пауза между запросом промпта и запросом изображения, чтобы не упираться в 429 GigaChat
             time.sleep(5)
 
+            # Повторная проверка потолка перед вызовом картинки
+            # (раунд исправлений 2а.2, замечание 2): промпт картинки уже
+            # создал строку учёта — следующий вызов без второй проверки
+            # обходит потолок GigaChat на 1 вызов
+            second_ceiling = check_provider_ceiling(PROVIDER_GIGACHAT_LITE)
+            if second_ceiling is not None:
+                message, status = second_ceiling
+                if token:
+                    request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                    request.session['openai_tokens_used'] = token.openai_tokens_used
+                return JsonResponse({'success': False, 'error': message}, status=status)
+
             # Запускаем генерацию изображения
             from .gigachat_api import generate_image_gigachat
             try:
@@ -730,6 +856,18 @@ def regenerate_image(request):
             # Если не удалось сгенерировать промпт, используем простое описание
             if not image_prompt:
                 image_prompt = f"Сделай яркую иллюстрацию для социальной сети на тему: '{topic}'. Стиль: цифровая живопись, яркие цвета."
+
+            # Повторная проверка потолка перед вызовом картинки
+            # (раунд исправлений 2а.2, замечание 2): промпт картинки уже
+            # создал строку учёта — следующий вызов без второй проверки
+            # обходит потолок GigaChat на 1 вызов
+            second_ceiling = check_provider_ceiling(PROVIDER_GIGACHAT_LITE)
+            if second_ceiling is not None:
+                message, status = second_ceiling
+                if token:
+                    request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+                    request.session['openai_tokens_used'] = token.openai_tokens_used
+                return JsonResponse({'success': False, 'error': message}, status=status)
 
             # Запускаем генерацию изображения
             try:

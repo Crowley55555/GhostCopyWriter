@@ -18,36 +18,43 @@ import os
 import json
 import requests
 from cryptography.fernet import Fernet
-import base64
-from dotenv import load_dotenv
 
-# Загружаем переменные окружения из .env файла
-load_dotenv()
+# `load_dotenv()` отсюда убран (раунд исправлений 2а.2, замечание 1):
+# `.env` загружается ровно один раз в `ghostwriter/settings.py`.
+# `FLASK_GEN_URL` и ключ шифрования читаются ленивыми функциями —
+# при импорте модуля побочных эффектов нет: ни чтения env, ни печати
+# ключей в stdout, ни генерации Fernet-ключей. Flask-клиент снят с
+# пути запроса (решение владельца 2026-10-07), эти функции сейчас
+# не вызываются из `views.py`, но файл остаётся на будущее.
 
-FLASK_GEN_URL = os.environ.get('FLASK_GEN_URL', 'http://localhost:5000')
-ENCRYPTION_KEY = os.environ.get('GENERATOR_ENCRYPTION_KEY')
+_cipher_cache = None
 
-if not ENCRYPTION_KEY:
-    # Генерируем валидный ключ автоматически
-    key = Fernet.generate_key()
-    ENCRYPTION_KEY = key.decode()
-    print(f"KEY: Django: Сгенерирован новый ключ: {ENCRYPTION_KEY}")
-    print("INFO: Добавьте этот ключ в ОБА .env файла:")
-    print(f"GENERATOR_ENCRYPTION_KEY={ENCRYPTION_KEY}")
-    print("RESTART: Затем перезапустите приложения")
 
-try:
-    cipher = Fernet(ENCRYPTION_KEY.encode())
-    print(f"OK: Django: Ключ шифрования инициализирован")
-except ValueError as e:
-    # Генерируем новый валидный ключ
-    key = Fernet.generate_key()
-    ENCRYPTION_KEY = key.decode()
-    cipher = Fernet(key)
-    print(f"KEY: Django: Сгенерирован исправленный ключ: {ENCRYPTION_KEY}")
-    print("INFO: Добавьте этот ключ в ОБА .env файла:")
-    print(f"GENERATOR_ENCRYPTION_KEY={ENCRYPTION_KEY}")
-    print("RESTART: Затем перезапустите приложения")
+def _get_flask_url():
+    """Ленивое чтение URL Flask-сервиса. Default совпадает с прежним модульным"""
+    return os.environ.get('FLASK_GEN_URL', 'http://localhost:5000')
+
+
+def _get_cipher():
+    """
+    Ленивая инициализация Fernet. Прежние побочные эффекты (генерация
+    ключа и `print` в stdout при пустом env) убраны: модуль импортируется
+    из `views.py` при старте Django — лишние print смешивались бы с
+    текстом поста. Если ключа нет, функция сгенерирует валидный ключ
+    в памяти, но не выведет его: клиенту Flask нужен тот же ключ в
+    обеих средах, и настоящий ключ ставится в env.
+    """
+    global _cipher_cache
+    if _cipher_cache is not None:
+        return _cipher_cache
+    encryption_key = os.environ.get('GENERATOR_ENCRYPTION_KEY')
+    if not encryption_key:
+        encryption_key = Fernet.generate_key().decode()
+    try:
+        _cipher_cache = Fernet(encryption_key.encode())
+    except ValueError:
+        _cipher_cache = Fernet(Fernet.generate_key())
+    return _cipher_cache
 
 # =============================================================================
 # ENCRYPTION FUNCTIONS
@@ -63,7 +70,7 @@ def encrypt_data(data: dict) -> str:
     Returns:
         str: Зашифрованная строка
     """
-    return cipher.encrypt(json.dumps(data).encode()).decode()
+    return _get_cipher().encrypt(json.dumps(data).encode()).decode()
 
 def decrypt_data(token: str) -> dict:
     """
@@ -75,7 +82,7 @@ def decrypt_data(token: str) -> dict:
     Returns:
         dict: Расшифрованные данные
     """
-    return json.loads(cipher.decrypt(token.encode()).decode())
+    return json.loads(_get_cipher().decrypt(token.encode()).decode())
 
 # =============================================================================
 # API CLIENT FUNCTIONS
@@ -98,7 +105,7 @@ def generate_text_and_prompt(payload: dict, token=None) -> dict:
     Raises:
         Exception: При ошибках подключения или обработки данных
     """
-    url = f'{FLASK_GEN_URL}/generate-text'
+    url = f'{_get_flask_url()}/generate-text'
     print(f"Отправка запроса к Flask API: {url}")
     print(f"Payload: {payload}")
     
@@ -171,7 +178,7 @@ def generate_image(image_prompt: str) -> str:
     Returns:
         str: URL сгенерированного изображения или None при ошибке
     """
-    url = f'{FLASK_GEN_URL}/generate-image'
+    url = f'{_get_flask_url()}/generate-image'
     print(f"Отправка запроса на генерацию изображения: {url}")
     print(f"Image prompt: {image_prompt}")
     

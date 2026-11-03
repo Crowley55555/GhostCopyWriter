@@ -1,11 +1,12 @@
-from dotenv import load_dotenv
-load_dotenv()
-import os
+# `load_dotenv()` отсюда убран (раунд исправлений 2а.2, замечание 1):
+# `.env` загружается только в `ghostwriter/settings.py` — иначе этот
+# модуль поднимался бы по дереву в поисках `.env` и мог бы подхватить
+# чужой файл выше корня проекта. Клиенты читают переменные через
+# `django.conf.settings` или ленивыми функциями при реальном вызове —
+# при импорте модуля побочных эффектов нет.
 import requests
 import time
 
-FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
-IAM_TOKEN = os.getenv("YANDEX_IAM_TOKEN")
 
 def generate_image(prompt):
     """

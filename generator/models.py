@@ -415,17 +415,33 @@ class TemporaryAccessToken(models.Model):
 
 class GigaChatTokenUsage(models.Model):
     """
-    Отслеживание расхода токенов GigaChat API
-    
-    Хранит информацию о каждом запросе к GigaChat API:
-    - Тип операции (текст, промпт изображения, генерация изображения)
-    - Количество использованных токенов (оценка)
-    - Связь с генерацией и пользователем
+    Отслеживание расхода токенов LLM (GigaChat и YandexGPT)
+
+    Хранит информацию о каждом запросе к текстовой модели:
+    - Тип операции (текст, промпт изображения, генерация изображения).
+    - Количество использованных токенов (оценка).
+    - Связь с генерацией и пользователем.
+    - Провайдер и модель — закрытый список коротких констант (замечание 2
+      ревью безопасности): значения из env в эти поля не идут. Класс оставлен
+      с прежним именем, чтобы миграция была минимальной (новые поля — не
+      переименование таблицы).
     """
     OPERATION_TYPES = (
         ('TEXT_GENERATION', 'Генерация текста'),
         ('IMAGE_PROMPT', 'Промпт для изображения'),
         ('IMAGE_GENERATION', 'Генерация изображения'),
+    )
+
+    # Провайдеры и модели — закрытый список коротких констант кода.
+    # Значения из env (`GIGACHAT_MODEL`, `YANDEX_GPT_MODEL`) в эти поля
+    # НЕ идут: иначе длинное имя модели выключит потолок и обойдёт учёт
+    PROVIDER_GIGACHAT_LITE = 'gigachat-lite'
+    PROVIDER_GIGACHAT_PRO = 'gigachat-pro'
+    PROVIDER_YANDEXGPT = 'yandexgpt'
+    PROVIDER_CHOICES = (
+        (PROVIDER_GIGACHAT_LITE, 'GigaChat Lite'),
+        (PROVIDER_GIGACHAT_PRO, 'GigaChat Pro'),
+        (PROVIDER_YANDEXGPT, 'YandexGPT'),
     )
     
     # Связь с генерацией (опционально)
@@ -508,7 +524,25 @@ class GigaChatTokenUsage(models.Model):
         null=True,
         verbose_name="Платформа"
     )
-    
+    # Провайдер (замечание 2 ревью безопасности): закрытый список выше.
+    # Строка пустая у старых записей — они относятся только к GigaChat Lite
+    provider = models.CharField(
+        max_length=20,
+        choices=PROVIDER_CHOICES,
+        blank=True,
+        default='',
+        verbose_name="Провайдер"
+    )
+    # Короткое имя модели из закрытого списка кода (гарантированно не длиннее
+    # max_length). Для YandexGPT пишется `yandexgpt`, для Pro — `gigachat-pro`
+    # и т. п. Полное имя из env.YANDEX_GPT_MODEL сюда не попадает
+    model_code = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        verbose_name="Код модели"
+    )
+
     class Meta:
         verbose_name = "Использование токенов GigaChat"
         verbose_name_plural = "Использование токенов GigaChat"

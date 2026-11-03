@@ -280,29 +280,15 @@
                             </div>
                             </div>
                             <div class="col-12 mb-3">
-  <label class="form-label"><i class="bi bi-cpu me-1"></i>Выбор генератора</label>
-  <div class="btn-group w-100" role="group" aria-label="Выбор генератора">
-    <input type="radio" class="btn-check" name="generator_type" id="genTypeGigachat" value="gigachat" autocomplete="off" checked>
-    <label class="btn btn-outline-primary" for="genTypeGigachat" id="labelGigachat"><i class="bi bi-robot"></i> Gigachat</label>
-    {% if openai_tokens_limit == 0 %}
-    <input type="radio" class="btn-check" name="generator_type" id="genTypeOpenAI" value="openai" autocomplete="off" disabled>
-    <label class="btn btn-outline-success opacity-50" for="genTypeOpenAI" id="labelOpenAI" style="cursor: not-allowed;"><i class="bi bi-lightning-charge"></i> OpenAI + DALL-E <span class="badge bg-secondary ms-1">Недоступен</span></label>
-    {% else %}
-    <input type="radio" class="btn-check" name="generator_type" id="genTypeOpenAI" value="openai" autocomplete="off">
-    <label class="btn btn-outline-success" for="genTypeOpenAI" id="labelOpenAI"><i class="bi bi-lightning-charge"></i> OpenAI + DALL-E</label>
-    {% endif %}
-  </div>
-  {% if openai_tokens_limit == 0 %}
-  <div class="alert alert-warning mt-2 py-2 px-3 mb-0 d-flex align-items-center" role="alert">
-    <i class="bi bi-info-circle-fill me-2"></i>
-    <small><strong>OpenAI + DALL-E недоступен для вашего тарифа.</strong> Выберите платный тариф для доступа к OpenAI или используйте GigaChat.</small>
-  </div>
-  {% elif openai_tokens_limit > 0 and openai_tokens_used >= openai_tokens_limit %}
-  <div class="alert alert-danger mt-2 py-2 px-3 mb-0 d-flex align-items-center" role="alert">
-    <i class="bi bi-exclamation-triangle-fill me-2"></i>
-    <small><strong>Лимит OpenAI токенов исчерпан.</strong> Вы можете продолжать использовать GigaChat или обновить тариф.</small>
-  </div>
-  {% endif %}
+  {# Меню «Модель» (фаза 2а.2): закрытый список MODEL_CHOICES. #}
+  {# Без ключа YandexGPT пункт в разметке отсутствует — список готовит view #}
+  {# в available_models. generator_type удалён (замечание 1 ревью безопасности). #}
+  <label class="form-label" for="modelSelect"><i class="bi bi-cpu me-1"></i>Модель</label>
+  <select class="form-select" id="modelSelect" name="model" aria-label="Модель">
+    {% for value, label in available_models %}
+    <option value="{{ value }}"{% if value == 'gigachat-lite' %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
 </div>
                         </div>
                         <div class="mt-3 mb-3">

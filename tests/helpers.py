@@ -100,9 +100,61 @@ def fake_gigachat():
     """
     fake = FakeGigaChat()
     with ExitStack() as stack:
-        stack.enter_context(patch('generator.gigachat_api._init_client', return_value=fake))
+        # `_init_client(model=...)` вызывается с кварг — надо игнорировать
+        stack.enter_context(patch('generator.gigachat_api._init_client',
+                                  side_effect=lambda *a, **kw: fake))
         stack.enter_context(patch('generator.gigachat_api._init_direct_client', return_value=fake))
         stack.enter_context(patch('generator.gigachat_api.time.sleep'))
+        yield fake
+
+
+class FakeYandexGPT:
+    """
+    Клиент YandexGPT без сети: отвечает как настоящий и считает обращения
+
+    Один фейк подменяет `_call_completion` в `yandexgpt_api`: функция
+    получает `system_prompt` и `user_message` и возвращает текст. Сообщения
+    (system/user) каждого вызова сохраняются в `.messages` — по ним тесты
+    видят, что ушло бы в YandexGPT (сравнение с FakeGigaChat.invoke_messages).
+
+    Атрибуты (контракт того же вида, что у FakeGigaChat):
+    - `.calls` — число вызовов текстового клиента;
+    - `.messages` — список `[(system_prompt, user_message), ...]`.
+    """
+
+    TEXT = 'Сгенерированный пост про кофейню (yandex)'
+
+    def __init__(self, response_text=None):
+        self.calls = 0
+        self.messages = []
+        self.response_text = response_text if response_text is not None else self.TEXT
+
+    def __call__(self, system_prompt, user_message, **kwargs):
+        self.calls += 1
+        self.messages.append((system_prompt, user_message))
+        return self.response_text
+
+
+@contextmanager
+def fake_yandexgpt(response_text=None, override_keys=True):
+    """
+    Подменяет HTTP-клиент YandexGPT фейком и отдаёт его
+
+    Параметры:
+      response_text: ответ фейка (по умолчанию `FakeYandexGPT.TEXT`);
+      override_keys: подставить фиктивные `YANDEX_API_KEY` и `YANDEX_FOLDER_ID`
+        на время теста (иначе проверка в `generate_text_yandex` отдаст 400
+        «ключ не настроен» до фейка).
+    """
+    from django.test import override_settings
+    fake = FakeYandexGPT(response_text=response_text)
+    with ExitStack() as stack:
+        if override_keys:
+            stack.enter_context(override_settings(
+                YANDEX_API_KEY='test-yandex-key',
+                YANDEX_FOLDER_ID='test-folder-id',
+            ))
+        stack.enter_context(patch('generator.yandexgpt_api._call_completion', side_effect=fake))
         yield fake
 
 

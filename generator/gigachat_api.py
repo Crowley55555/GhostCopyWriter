@@ -1,9 +1,7 @@
 import logging
-import os
 import base64
 import re
 import time
-from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from django.conf import settings
 
@@ -26,68 +24,43 @@ try:
 except ImportError:
     TOKEN_TRACKING_ENABLED = False
 
-load_dotenv()
+# `load_dotenv()` отсюда убран (замечание 4 ревью безопасности): `.env`
+# загружается только в `ghostwriter/settings.py`, клиенты читают ключи
+# из `settings`. При импорте этого модуля значения ключей не выводятся
+# в stdout — это security review замечание 5.
 
-# Новый способ: один Authorization Key (рекомендуется)
-GIGACHAT_CREDENTIALS = os.getenv("GIGACHAT_CREDENTIALS")
-
-# Старый способ: Client ID + Client Secret (для обратной совместимости)
-CLIENT_ID = os.getenv("GIGACHAT_CLIENT_ID")
-CLIENT_SECRET = os.getenv("GIGACHAT_CLIENT_SECRET")
-
-SCOPE = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS")
-
-# Отладочный вывод для диагностики проблем с переменными окружения
-print("=" * 60)
-print("GigaChat Configuration:")
-print(f"  GIGACHAT_CREDENTIALS: {'SET (' + str(len(GIGACHAT_CREDENTIALS)) + ' chars)' if GIGACHAT_CREDENTIALS else 'NOT SET'}")
-print(f"  CLIENT_ID: {'SET' if CLIENT_ID else 'NOT SET'}")
-print(f"  CLIENT_SECRET: {'SET' if CLIENT_SECRET else 'NOT SET'}")
-print(f"  SCOPE: {SCOPE}")
-print("=" * 60)
 
 def _get_credentials():
     """
-    Получает credentials для GigaChat API.
-    
+    Credentials GigaChat из settings — замечание 4 ревью безопасности
+
     Поддерживает два способа:
-    1. GIGACHAT_CREDENTIALS - готовый Authorization Key (рекомендуется)
-    2. CLIENT_ID + CLIENT_SECRET - старый способ (будет закодирован в base64)
+    1. GIGACHAT_CREDENTIALS — готовый Authorization Key (рекомендуется);
+    2. GIGACHAT_CLIENT_ID + GIGACHAT_CLIENT_SECRET — base64 (обратная совместимость).
     """
-    # Способ 1: Готовый Authorization Key (рекомендуется)
-    if GIGACHAT_CREDENTIALS:
-        print("Используем GIGACHAT_CREDENTIALS (готовый ключ)")
-        return GIGACHAT_CREDENTIALS
-    
-    # Способ 2: Client ID + Client Secret (старый способ)
-    if CLIENT_ID and CLIENT_SECRET:
-        # Проверяем, не являются ли они одинаковыми (значит это готовый ключ)
-        if CLIENT_ID == CLIENT_SECRET:
-            print("CLIENT_ID == CLIENT_SECRET, используем как готовый ключ")
-            return CLIENT_ID
-        
-        print("Используем CLIENT_ID:CLIENT_SECRET (base64)")
-        creds = f"{CLIENT_ID}:{CLIENT_SECRET}".encode("utf-8")
+    credentials = getattr(settings, 'GIGACHAT_CREDENTIALS', '') or ''
+    client_id = getattr(settings, 'GIGACHAT_CLIENT_ID', '') or ''
+    client_secret = getattr(settings, 'GIGACHAT_CLIENT_SECRET', '') or ''
+
+    if credentials:
+        return credentials
+    if client_id and client_secret:
+        if client_id == client_secret:
+            return client_id
+        creds = f"{client_id}:{client_secret}".encode("utf-8")
         return base64.b64encode(creds).decode()
-    
-    # Ничего не настроено
-    print("WARNING: GigaChat credentials не настроены!")
-    print("Добавьте в .env файл:")
-    print("  GIGACHAT_CREDENTIALS=ваш_authorization_key")
-    print("или:")
-    print("  GIGACHAT_CLIENT_ID=ваш_client_id")
-    print("  GIGACHAT_CLIENT_SECRET=ваш_client_secret")
     return None
 
-def _init_client():
-    """Клиент для текста и промпта картинки; модель — настройка GIGACHAT_MODEL"""
+
+def _init_client(model=None):
+    """Клиент для текста и промпта картинки; модель — явно (Lite или Pro)"""
     credentials = _get_credentials()
     if not credentials:
         raise ValueError("GigaChat credentials не настроены")
     return GigaChat(
         credentials=credentials,
-        scope=SCOPE,
-        model=settings.GIGACHAT_MODEL,
+        scope=settings.GIGACHAT_SCOPE,
+        model=model or settings.GIGACHAT_MODEL,
         verify_ssl_certs=False,
         timeout=120  # 2 минуты для текста
     )
@@ -103,7 +76,7 @@ def _init_direct_client():
         raise ValueError("GigaChat credentials не настроены")
     return GigaChatDirect(
         credentials=credentials,
-        scope=SCOPE,
+        scope=settings.GIGACHAT_SCOPE,
         model=settings.GIGACHAT_IMAGE_MODEL,
         verify_ssl_certs=False,
         timeout=300  # 5 минут для изображений (они генерируются дольше)
@@ -631,29 +604,47 @@ def estimate_tokens(text):
     return int(len(str(text)) / 2.5)
 
 
-def log_token_usage(operation_type, prompt_text, response_text, generation_id=None, 
-                    user=None, token=None, topic=None, platform=None):
+def log_token_usage(operation_type, prompt_text, response_text, *,
+                    provider, generation_id=None,
+                    user=None, token=None, topic=None, platform=None,
+                    model_code=None):
     """
-    Логирует использование токенов GigaChat
-    
-    Args:
-        operation_type: Тип операции ('TEXT_GENERATION', 'IMAGE_PROMPT', 'IMAGE_GENERATION')
-        prompt_text: Текст промпта
-        response_text: Текст ответа от API
-        generation_id: ID генерации (опционально)
-        user: Пользователь Django (опционально)
-        token: TemporaryAccessToken (опционально)
-        topic: Тема генерации (опционально)
-        platform: Платформа (опционально)
+    Логирует использование токенов LLM
+
+    `provider` — обязательный keyword-only параметр. Короткая константа
+    кода из закрытого списка `GigaChatTokenUsage.PROVIDER_CHOICES`
+    (замечание 2 ревью безопасности). Хрупкий `_PROVIDER_DEFAULT`
+    (раунд исправлений 2а.2, замечание 3) убран: раньше при забытом
+    `provider=` yandex-строка молча писалась в учёт GigaChat и обходила
+    YandexGPT-потолок. Теперь вызов без `provider` ронит `TypeError`
+    при импорте/запуске тестов; значение не из закрытого списка —
+    `logger.error` без создания строки.
+
+    `model_code` по умолчанию равен `provider`.
+
+    Ошибка записи уходит в лог уровнем ERROR, не через print (замечание 2
+    ревью безопасности): `print` смешивает ошибку с текстом поста в stdout.
     """
     if not TOKEN_TRACKING_ENABLED:
         return
-    
+
+    # Защита от невалидного `provider` — ровно 3 кода из закрытого списка.
+    # Строка в учёт не пишется: лучше потерять одну запись, чем молча
+    # записать YandexGPT как GigaChat и сдвинуть потолок (замечание 3)
+    valid_providers = {code for code, _label in GigaChatTokenUsage.PROVIDER_CHOICES}
+    if provider not in valid_providers:
+        logger.error(
+            'log_token_usage: provider %r не из закрытого списка %r — '
+            'строка учёта не создана',
+            provider, sorted(valid_providers),
+        )
+        return
+
     try:
         prompt_tokens = estimate_tokens(prompt_text)
         completion_tokens = estimate_tokens(response_text)
         total_tokens = prompt_tokens + completion_tokens
-        
+
         generation = None
         if generation_id:
             try:
@@ -670,6 +661,13 @@ def log_token_usage(operation_type, prompt_text, response_text, generation_id=No
         if platform:
             platform = str(platform)[:platform_max]
 
+        # provider/model_code — закрытый список коротких констант. Длину
+        # ограничивает поле; значения из env сюда не идут
+        provider_max = GigaChatTokenUsage._meta.get_field('provider').max_length
+        model_code_max = GigaChatTokenUsage._meta.get_field('model_code').max_length
+        provider_value = str(provider)[:provider_max]
+        model_code_value = str(model_code or provider_value)[:model_code_max]
+
         GigaChatTokenUsage.objects.create(
             generation=generation,
             user=user,
@@ -681,11 +679,14 @@ def log_token_usage(operation_type, prompt_text, response_text, generation_id=No
             prompt_length=len(str(prompt_text)),
             response_length=len(str(response_text)),
             topic=topic,
-            platform=platform
+            platform=platform,
+            provider=provider_value,
+            model_code=model_code_value,
         )
-    except Exception as e:
-        # Не прерываем выполнение при ошибке логирования
-        print(f"Ошибка при логировании токенов: {e}")
+    except Exception:
+        # Ошибка логирования не прерывает ответ пользователю,
+        # но попадает в лог как ERROR (замечание 2 ревью безопасности)
+        logger.exception('Ошибка при логировании токенов')
 
 
 # Константа оставлена для внутренних путей (например, скрипта прогона фазы 2);
@@ -722,30 +723,41 @@ class GigaChatError(Exception):
         self.status_code = status_code
 
 
-def _gigachat_limit_reached(token):
+def _token_limit_reached(token):
     """
-    Лимит GigaChat у переданного токена исчерпан (или токен неактивен, истёк)
+    Лимит LLM у переданного токена исчерпан (или токен неактивен, истёк)
 
     Проверяется перед каждым обращением к клиенту: view проверяет доступ
     один раз, а цепочка «текст → промпт → картинка» делает до трёх вызовов.
+    Бюджет один — поле `gigachat_tokens_limit` на `TemporaryAccessToken`
+    используется и для YandexGPT, и для Pro (имя сохранено для меньшей
+    миграции; see checkpoint).
     """
     return token is not None and not token.can_use_gigachat()[0]
 
 
-def _account_gigachat_call(token, tokens_used, **log_kwargs):
+# Старое имя — для обратной совместимости в тестах, которые его импортируют
+_gigachat_limit_reached = _token_limit_reached
+
+
+def _account_llm_call(token, tokens_used, **log_kwargs):
     """
-    Учёт состоявшегося вызова GigaChat: списание с токена и строка GigaChatTokenUsage
+    Учёт состоявшегося вызова LLM: списание с токена и строка GigaChatTokenUsage
 
     Квота к этому моменту уже потрачена, поэтому учитывается и вызов,
     пересёкший лимит токена: его результат отдаётся как обычно, а следующий
-    вызов остановит _gigachat_limit_reached (токен в памяти видит списание).
+    вызов остановит `_token_limit_reached` (токен в памяти видит списание).
     """
     if token:
         try:
             token.consume_gigachat_tokens(tokens_used)
-        except Exception as e:
-            print(f"Ошибка при учёте токенов GigaChat: {e}")
+        except Exception:
+            logger.exception('Ошибка при учёте токенов LLM')
     log_token_usage(token=token, **log_kwargs)
+
+
+# Старое имя — для обратной совместимости в тестах, которые его импортируют
+_account_gigachat_call = _account_llm_call
 
 
 # --- ПОСТОБРАБОТКА ОТВЕТА ---
@@ -965,9 +977,10 @@ def postprocess_final_result(text, platform=None):
             break
     return result
 
-def generate_text(data, user=None, token=None, generation_id=None):
+def generate_text(data, user=None, token=None, generation_id=None,
+                  provider=None, model=None):
     """
-    Генерирует текст через GigaChat API
+    Генерирует текст через GigaChat (Lite или Pro)
 
     Любая ошибка — исключение `GigaChatError` с константным сообщением
     без технических подробностей и HTTP-кодом ответа. Строка `WARNING: …`
@@ -978,6 +991,10 @@ def generate_text(data, user=None, token=None, generation_id=None):
         user: Пользователь Django (опционально, для логирования)
         token: TemporaryAccessToken (опционально, для логирования)
         generation_id: ID генерации (опционально, для логирования)
+        provider: короткий код провайдера для строки учёта
+            (`gigachat-lite` или `gigachat-pro`). По умолчанию — Lite
+        model: имя модели для клиента (из `settings.GIGACHAT_MODEL` /
+            `settings.GIGACHAT_PRO_MODEL`); None — модель Lite из настроек
 
     Returns:
         str: Сгенерированный текст
@@ -985,10 +1002,11 @@ def generate_text(data, user=None, token=None, generation_id=None):
     Raises:
         GigaChatError: исчерпан лимит токена или сбой GigaChat
     """
-    if _gigachat_limit_reached(token):
+    if _token_limit_reached(token):
         raise GigaChatError(MSG_GIGACHAT_LIMIT_REACHED, status_code=429)
+    provider_code = provider or GigaChatTokenUsage.PROVIDER_GIGACHAT_LITE
     try:
-        giga = _init_client()
+        giga = _init_client(model=model)
         system_prompt = assemble_prompt_from_criteria(data)
         user_message = build_user_message(data)
         messages = [
@@ -1005,7 +1023,7 @@ def generate_text(data, user=None, token=None, generation_id=None):
         clean_result = postprocess_final_result(resp.content, data.get('platform'))
 
         # Учёт вызова (и пересёкшего лимит: текст уже оплачен квотой и отдаётся)
-        _account_gigachat_call(
+        _account_llm_call(
             token,
             estimate_tokens(full_prompt) + estimate_tokens(resp.content),
             operation_type='TEXT_GENERATION',
@@ -1014,11 +1032,15 @@ def generate_text(data, user=None, token=None, generation_id=None):
             generation_id=generation_id,
             user=user,
             topic=data.get('topic'),
-            platform=data.get('platform')
+            platform=data.get('platform'),
+            provider=provider_code,
+            model_code=provider_code,
         )
 
         return clean_result
-    except Exception as e:
+    except GigaChatError:
+        raise
+    except Exception:
         logger.exception('Ошибка при генерации текста через GigaChat')
         raise GigaChatError(MSG_GENERATION_FAILED, status_code=502) from None
 
@@ -1037,10 +1059,13 @@ def generate_image_prompt_from_text(text, form_data, user=None, token=None, gene
     Returns:
         str: Промпт для генерации изображения
     """
-    if _gigachat_limit_reached(token):
+    if _token_limit_reached(token):
         raise GigaChatError(MSG_GIGACHAT_LIMIT_REACHED, status_code=429)
     try:
-        giga = _init_client()
+        # Промпт картинки идёт всегда в GigaChat Lite (решение владельца:
+        # картинки не меняются с меню «Модель»). Явная модель — замечание 1
+        # ревью безопасности: клиент текста не наследует Pro из окружения
+        giga = _init_client(model=settings.GIGACHAT_MODEL)
         # Системный промпт для визуального генератора
         sys_prompt = (
             "Ты — креативный визуализатор. "
@@ -1070,8 +1095,9 @@ def generate_image_prompt_from_text(text, form_data, user=None, token=None, gene
         resp = giga.invoke(messages)
         result = resp.content.strip()
 
-        # Учёт вызова (и пересёкшего лимит: промпт уже оплачен квотой и отдаётся)
-        _account_gigachat_call(
+        # Учёт вызова (и пересёкшего лимит: промпт уже оплачен квотой и отдаётся).
+        # Провайдер — всегда GigaChat Lite: картинки на YandexGPT не идут
+        _account_llm_call(
             token,
             estimate_tokens(full_prompt) + estimate_tokens(resp.content),
             operation_type='IMAGE_PROMPT',
@@ -1080,11 +1106,15 @@ def generate_image_prompt_from_text(text, form_data, user=None, token=None, gene
             generation_id=generation_id,
             user=user,
             topic=form_data.get('topic'),
-            platform=platform
+            platform=platform,
+            provider=GigaChatTokenUsage.PROVIDER_GIGACHAT_LITE,
+            model_code=GigaChatTokenUsage.PROVIDER_GIGACHAT_LITE,
         )
 
         return result
-    except Exception as e:
+    except GigaChatError:
+        raise
+    except Exception:
         logger.exception('Ошибка при генерации промпта для изображения')
         raise GigaChatError(MSG_IMAGE_PROMPT_FAILED, status_code=502) from None
 
@@ -1103,11 +1133,10 @@ def generate_image_gigachat(image_prompt, user=None, token=None, generation_id=N
     Returns:
         str: Base64 изображение или None
     """
-    if _gigachat_limit_reached(token):
+    if _token_limit_reached(token):
         raise GigaChatError(MSG_GIGACHAT_LIMIT_REACHED, status_code=429)
     try:
         giga = _init_direct_client()
-        print("Клиент для изображений успешно инициализирован")
         time.sleep(1)
         
         system_message = "Ты — талантливый художник, специализирующийся на создании иллюстраций для социальных сетей"
@@ -1143,15 +1172,18 @@ def generate_image_gigachat(image_prompt, user=None, token=None, generation_id=N
         print("GigaChat image response:", response_content)
 
         # Учёт вызова сразу после ответа: квота потрачена, даже если картинку
-        # не удастся извлечь или скачать. Картинка, пересёкшая лимит, отдаётся
-        _account_gigachat_call(
+        # не удастся извлечь или скачать. Картинка, пересёкшая лимит, отдаётся.
+        # Провайдер — всегда GigaChat Lite: картинки на YandexGPT не идут
+        _account_llm_call(
             token,
             estimate_tokens(full_prompt) + 1000,  # Примерная оценка для изображения
             operation_type='IMAGE_GENERATION',
             prompt_text=full_prompt,
             response_text=str(response_content)[:500],  # Ограничиваем для логирования
             generation_id=generation_id,
-            user=user
+            user=user,
+            provider=GigaChatTokenUsage.PROVIDER_GIGACHAT_LITE,
+            model_code=GigaChatTokenUsage.PROVIDER_GIGACHAT_LITE,
         )
 
         # Если ответ уже содержит готовое base64 изображение, возвращаем его напрямую
@@ -1311,11 +1343,11 @@ def download_image(giga_client, file_id):
             auth_response = requests.post(
                 "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
                 headers={
-                    "Authorization": f"Bearer {_get_base64_credentials()}",
+                    "Authorization": f"Bearer {_get_credentials()}",
                     "RqUID": "123456789",
                     "Content-Type": "application/x-www-form-urlencoded"
                 },
-                data={"scope": SCOPE},
+                data={"scope": settings.GIGACHAT_SCOPE},
                 verify=False
             )
             

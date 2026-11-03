@@ -31,9 +31,21 @@ MSG_NO_TOKEN = 'Нет доступа к генерации. Нажмите «П
 MSG_TOKEN_INVALID = 'Доступ закончился или недействителен. Получите новый на главной странице.'
 MSG_TOKEN_LIMIT = 'Лимит генераций для вашего доступа исчерпан.'
 MSG_DAILY_LIMIT = 'Сервис исчерпал дневной лимит генераций. Попробуйте позже.'
+MSG_DAILY_LIMIT_YANDEX = 'Сервис исчерпал дневной лимит YandexGPT. Попробуйте позже.'
+MSG_DAILY_LIMIT_GIGACHAT_PRO = 'Сервис исчерпал дневной лимит GigaChat Pro. Попробуйте Lite или позже.'
 MSG_TOPIC_TOO_LONG = 'Слишком длинная тема: не больше {max_length} символов.'
 MSG_TEXT_TOO_LONG = 'Слишком длинный текст поста: не больше {max_length} символов.'
 MSG_BUSINESS_INFO_TOO_LONG = 'Слишком длинное описание «О бизнесе»: не больше {max_length} символов.'
+MSG_MODEL_UNAVAILABLE = 'Выбранная модель недоступна.'
+
+# Короткие коды провайдеров — такие же, как в `GigaChatTokenUsage.PROVIDER_CHOICES`.
+# Повторяются здесь, чтобы `access.py` не импортировал `generator.models`
+# (круговые импорты у миграций). Проверка константами — тест.
+PROVIDER_GIGACHAT_LITE = 'gigachat-lite'
+PROVIDER_GIGACHAT_PRO = 'gigachat-pro'
+PROVIDER_YANDEXGPT = 'yandexgpt'
+PROVIDER_CODES = (PROVIDER_GIGACHAT_LITE, PROVIDER_GIGACHAT_PRO, PROVIDER_YANDEXGPT)
+GIGACHAT_PROVIDERS = (PROVIDER_GIGACHAT_LITE, PROVIDER_GIGACHAT_PRO)
 
 
 def get_client_ip(request):
@@ -172,18 +184,85 @@ def issue_demo_token(request):
     return token
 
 
-def check_gigachat_access(request, topic=None, result_text=None, business_info=None):
-    """
-    Единая проверка перед каждым вызовом GigaChat
+def _window_start():
+    return timezone.now() - ACCESS_WINDOW
 
-    Проверяет действующий токен в сессии, остаток его лимита GigaChat
-    (лимит OpenAI не учитывается), общий потолок вызовов GigaChat за 24 часа
-    и длину пользовательского ввода, который уходит в промпт.
+
+def _provider_ceiling_message(provider_code):
+    """
+    Сообщение об исчерпанном дневном потолке — своё для каждого провайдера
+
+    GigaChat Lite и Pro делят общий потолок GigaChat, но Pro плюс к этому
+    упирается в собственный `GIGACHAT_PRO_DAILY_CALL_LIMIT`. У YandexGPT
+    отдельный потолок. Сообщение зависит от того, какой из них сработал
+    """
+    if provider_code == PROVIDER_YANDEXGPT:
+        return MSG_DAILY_LIMIT_YANDEX
+    if provider_code == PROVIDER_GIGACHAT_PRO:
+        return MSG_DAILY_LIMIT_GIGACHAT_PRO
+    return MSG_DAILY_LIMIT
+
+
+def check_provider_ceiling(provider_code):
+    """
+    Исчерпан ли дневной потолок у провайдера `provider_code`
+
+    Возвращает (сообщение, 429) или None. Считает только строки учёта
+    того же провайдера (замечание 1 ревью безопасности — проверка идёт
+    по провайдеру ФАКТИЧЕСКОГО вызова). Pro упирается и в общий потолок
+    GigaChat, и в свой собственный `GIGACHAT_PRO_DAILY_CALL_LIMIT`.
+    """
+    window = _window_start()
+    if provider_code in GIGACHAT_PROVIDERS:
+        # Общий потолок GigaChat — Lite и Pro вместе
+        gigachat_calls = GigaChatTokenUsage.objects.filter(
+            provider__in=GIGACHAT_PROVIDERS,
+            created_at__gte=window,
+        ).count()
+        # Старые строки с пустым provider — это GigaChat Lite (фаза 1).
+        # Их тоже засчитываем в общий потолок GigaChat
+        legacy_calls = GigaChatTokenUsage.objects.filter(
+            provider='',
+            created_at__gte=window,
+        ).count()
+        if gigachat_calls + legacy_calls >= settings.GIGACHAT_DAILY_CALL_LIMIT:
+            return MSG_DAILY_LIMIT, 429
+        if provider_code == PROVIDER_GIGACHAT_PRO:
+            pro_calls = GigaChatTokenUsage.objects.filter(
+                provider=PROVIDER_GIGACHAT_PRO,
+                created_at__gte=window,
+            ).count()
+            if pro_calls >= settings.GIGACHAT_PRO_DAILY_CALL_LIMIT:
+                return MSG_DAILY_LIMIT_GIGACHAT_PRO, 429
+        return None
+    if provider_code == PROVIDER_YANDEXGPT:
+        yandex_calls = GigaChatTokenUsage.objects.filter(
+            provider=PROVIDER_YANDEXGPT,
+            created_at__gte=window,
+        ).count()
+        if yandex_calls >= settings.YANDEX_DAILY_CALL_LIMIT:
+            return MSG_DAILY_LIMIT_YANDEX, 429
+        return None
+    # Неизвестный провайдер — не пропускаем
+    return MSG_MODEL_UNAVAILABLE, 400
+
+
+def check_text_access(request, provider_code=PROVIDER_GIGACHAT_LITE,
+                      topic=None, result_text=None, business_info=None):
+    """
+    Единая проверка перед каждым вызовом провайдера
+
+    Проверяет действующий токен в сессии, остаток его лимита токена
+    (один бюджет на все провайдеры — поле `gigachat_tokens_limit`),
+    дневной потолок **фактического провайдера** (замечание 1 ревью
+    безопасности) и длину пользовательского ввода.
 
     Returns:
         None, если вызов разрешён (токен кладётся в request.token),
-        иначе ответ с отказом: view возвращает его, не вызывая GigaChat
+        иначе ответ с отказом: view возвращает его, не вызывая провайдера
     """
+    if provider_code not in PROVIDER_CODES:
+        return deny(request, MSG_MODEL_UNAVAILABLE, 400, 'limit_exceeded_page')
     token = get_session_token(request)
     if token is None:
         return deny(request, MSG_NO_TOKEN, 403, 'token_required_page')
@@ -192,9 +271,10 @@ def check_gigachat_access(request, topic=None, result_text=None, business_info=N
     if not can_use:
         return deny(request, MSG_TOKEN_LIMIT, 429, 'limit_exceeded_page')
 
-    calls = GigaChatTokenUsage.objects.filter(created_at__gte=timezone.now() - ACCESS_WINDOW).count()
-    if calls >= settings.GIGACHAT_DAILY_CALL_LIMIT:
-        return deny(request, MSG_DAILY_LIMIT, 429, 'limit_exceeded_page')
+    ceiling = check_provider_ceiling(provider_code)
+    if ceiling is not None:
+        message, status = ceiling
+        return deny(request, message, status, 'limit_exceeded_page')
 
     for value, max_length, message in (
         (topic, settings.GENERATION_MAX_TOPIC_LENGTH, MSG_TOPIC_TOO_LONG),
@@ -206,3 +286,17 @@ def check_gigachat_access(request, topic=None, result_text=None, business_info=N
 
     request.token = token
     return None
+
+
+# Старое имя — для обратной совместимости в коде, который ещё его импортирует
+# (view уже переведён на `check_text_access`; имя остаётся на случай
+# внешних коллизий, но смысл теперь — проверка под GigaChat Lite).
+def check_gigachat_access(request, topic=None, result_text=None, business_info=None):
+    """Проверка под GigaChat Lite (фаза 1-совместимое поведение)"""
+    return check_text_access(
+        request,
+        provider_code=PROVIDER_GIGACHAT_LITE,
+        topic=topic,
+        result_text=result_text,
+        business_info=business_info,
+    )

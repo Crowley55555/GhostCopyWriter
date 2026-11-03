@@ -129,10 +129,21 @@ SESSION_COOKIE_SECURE = False
 # Отключаем статические файлы для тестов
 STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
 
-# Отключаем внешние API для тестов
-GIGACHAT_CLIENT_ID = 'test'
-GIGACHAT_CLIENT_SECRET = 'test'
-OPENAI_API_KEY = 'test'
+# Ключи провайдеров в тестах — пустые (замечание 4 ревью безопасности):
+# тесты, которым нужен ключ, подставляют его через `override_settings`.
+# `test_settings.py` `load_dotenv` не вызывает — предохранитель раннера плюс
+# пустые ключи дают тестам детерминированное окружение
+GIGACHAT_CREDENTIALS = ''
+GIGACHAT_CLIENT_ID = ''
+GIGACHAT_CLIENT_SECRET = ''
+GIGACHAT_SCOPE = 'GIGACHAT_API_PERS'
+YANDEX_API_KEY = ''
+YANDEX_FOLDER_ID = ''
+YANDEX_GPT_MODEL = 'yandexgpt-lite'
+YANDEX_CONNECT_TIMEOUT = 10.0
+YANDEX_READ_TIMEOUT = 60.0
+YANDEX_MAX_TOKENS = 2000
+OPENAI_API_KEY = ''
 
 # Настройки для избежания проблем с потоками
 DATABASE_OPTIONS = {
@@ -165,7 +176,10 @@ BEHIND_PROXY = False
 DEMO_TOKENS_PER_IP_PER_DAY = 3
 DEMO_GIGACHAT_TOKENS_LIMIT = 20000
 GIGACHAT_DAILY_CALL_LIMIT = 50
+GIGACHAT_PRO_DAILY_CALL_LIMIT = 25
+YANDEX_DAILY_CALL_LIMIT = 50
 GIGACHAT_MODEL = 'GigaChat'
+GIGACHAT_PRO_MODEL = 'GigaChat-2-Pro'
 GIGACHAT_IMAGE_MODEL = 'GigaChat'
 GENERATION_MAX_TOPIC_LENGTH = 500
 GENERATION_MAX_TEXT_LENGTH = 6000
