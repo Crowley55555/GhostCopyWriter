@@ -55,7 +55,9 @@ from tests.helpers import fake_gigachat
 
 AJAX = {'HTTP_X_REQUESTED_WITH': 'XMLHttpRequest'}
 
-PLATFORMS = ('VK', 'Telegram', 'Дзен')
+# Фаза 2а.3: Max добавлен как четвёртая площадка (решение владельца
+# 2026-10-07, idea/plan-impact.md раздел 3)
+PLATFORMS = ('VK', 'Telegram', 'Max', 'Дзен')
 TOPIC = 'Осеннее меню: тыквенный латте и пирог с яблоками'
 BUSINESS_INFO = 'Кофейня у метро, варим на зерне местной обжарки, пишем на «ты», без пафоса'
 
@@ -1159,7 +1161,8 @@ class GeneratorTemplateTests(TestCase):
 
     def test_platform_radios_inside_form(self):
         inputs = re.findall(r'<input[^>]*name="platform"[^>]*>', self.form)
-        self.assertEqual(len(inputs), 3)
+        # Фаза 2а.3: четыре площадки — VK, Telegram, Max, Дзен
+        self.assertEqual(len(inputs), len(PLATFORMS))
         for tag, platform in zip(inputs, PLATFORMS):
             self.assertIn('type="radio"', tag)
             self.assertIn(f'value="{platform}"', tag)

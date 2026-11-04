@@ -93,6 +93,13 @@
                                 <div class="form-text">{{ form.business_info.help_text }}</div>
                             </div>
                             <div class="col-12">
+                                {# Фаза 2а.3: поле «Образцы постов» (необязательно, до 10). #}
+                                {# Оформление — минимальное, финальный вид в фазе 5. #}
+                                <label for="id_samples" class="form-label"><i class="bi bi-chat-quote me-1"></i>Образцы ваших постов <span class="text-muted small">(необязательно)</span></label>
+                                {{ form.samples|add_class:'form-control' }}
+                                <div class="form-text">{{ form.samples.help_text }}</div>
+                            </div>
+                            <div class="col-12">
                                 <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#advancedSettings" aria-expanded="false" aria-controls="advancedSettings">
                                     <i class="bi bi-sliders me-1"></i>Дополнительно
                                 </button>
@@ -941,9 +948,12 @@ function getFormSettings() {
             data[el.name] = el.value;
         }
     });
-    // Исключаем поле topic и «О бизнесе» из settings для шаблона
+    // Исключаем поле topic, «О бизнесе» и образцы постов из settings для шаблона.
+    // Фаза 2а.3: образцы — живут только в сессии, в шаблоны настроек не пишутся
+    // (как и business_info); поля профиля — фаза 3.
     delete data['topic'];
     delete data['business_info'];
+    delete data['samples'];
     return data;
 }
 

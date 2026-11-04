@@ -294,12 +294,14 @@ def generator_view(request):
                 provider_code = _PROVIDER_BY_MODEL[requested_model]
 
                 # Единая проверка до первого обращения — по провайдеру
-                # ФАКТИЧЕСКОГО вызова (замечание 1 ревью безопасности)
+                # ФАКТИЧЕСКОГО вызова (замечание 1 ревью безопасности).
+                # Фаза 2а.3: передаём `samples` в проверку длины.
                 denial = check_text_access(
                     request,
                     provider_code=provider_code,
                     topic=form_data.get('topic'),
                     business_info=form_data.get('business_info'),
+                    samples=form_data.get('samples'),
                 )
                 if denial:
                     return denial
@@ -544,10 +546,12 @@ def regenerate_text(request):
             ):
                 requested_model = MODEL_DEFAULT
             provider_code = _PROVIDER_BY_MODEL[requested_model]
+            # Фаза 2а.3: `samples` из `last_form_data` — перегенерация их несёт
             denial = check_text_access(request,
                                        provider_code=provider_code,
                                        topic=topic,
-                                       business_info=form_data.get('business_info'))
+                                       business_info=form_data.get('business_info'),
+                                       samples=form_data.get('samples'))
             if denial:
                 return denial
             # Получаем токен для учёта токенов

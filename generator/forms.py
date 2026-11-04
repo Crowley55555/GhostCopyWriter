@@ -6,9 +6,13 @@ from django.core.validators import MaxLengthValidator
 from .models import UserProfile
 
 # Площадки поста: значение уходит в промпт (правила площадки — gigachat_api.PLATFORM_RULES)
+# Фаза 2а.3: добавлен Max — четвёртая площадка (решение владельца 2026-10-07,
+# idea/plan-impact.md, раздел 3). Правила форматирования Max — гипотеза
+# (как Telegram), документация Max публично не найдена; уточнить после живой проверки.
 PLATFORM_CHOICES = [
     ("VK", "ВКонтакте"),
     ("Telegram", "Telegram"),
+    ("Max", "Max"),
     ("Дзен", "Дзен"),
 ]
 
@@ -52,6 +56,10 @@ DEFAULT_SETTINGS = {
 PLATFORM_DEFAULT_SETTINGS = {
     "VK": {'post_length': "Средний", 'hashtag_usage': "Минимум", 'content_format': ["Краткий"]},
     "Telegram": {'post_length': "Короткий", 'hashtag_usage': "Без хэштегов", 'content_format': ["Краткий"]},
+    # ГИПОТЕЗА: правила Max для короткого канального поста совпадают с Telegram
+    # (пабличные каналы Max, июль 2026). Документация публично не найдена;
+    # уточнить после живой проверки — фаза 2а.3.
+    "Max": {'post_length': "Короткий", 'hashtag_usage': "Без хэштегов", 'content_format': ["Краткий"]},
     "Дзен": {'post_length': "Длинный", 'hashtag_usage': "Без хэштегов", 'content_format': ["Подробный"]},
 }
 
@@ -70,8 +78,8 @@ class GenerationForm(forms.Form):
         label="Площадка",
         widget=forms.RadioSelect,
         error_messages={
-            'required': "Выберите площадку: ВКонтакте, Telegram или Дзен.",
-            'invalid_choice': "Выберите площадку: ВКонтакте, Telegram или Дзен.",
+            'required': "Выберите площадку: ВКонтакте, Telegram, Max или Дзен.",
+            'invalid_choice': "Выберите площадку: ВКонтакте, Telegram, Max или Дзен.",
         },
     )
     business_info = forms.CharField(
@@ -81,6 +89,25 @@ class GenerationForm(forms.Form):
         required=False,
         error_messages={
             'max_length': "«О бизнесе» — не больше %(limit_value)d символов (сейчас %(show_value)d).",
+        },
+    )
+    # Фаза 2а.3: образцы постов владельца (необязательно, до 10).
+    # Форма ввода — одно поле Textarea с разделителем `---` на отдельной
+    # строке (обоснование в checkpoint): 10 отдельных полей шумят на мобилке,
+    # сессия хранит одной строкой, перегенерация и шаблоны настроек —
+    # прозрачно. Образцы попадают в сообщение к модели в блоке с
+    # маркерами (gigachat_api.build_user_message); факты из них не
+    # переносятся — только тон, длина, обращение, эмодзи.
+    samples = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 4}),
+        label="Образцы ваших постов",
+        required=False,
+        help_text=(
+            "3–5 постов достаточно, до 10 — лучше. "
+            "Разделяйте посты строкой из трёх дефисов (---)."
+        ),
+        error_messages={
+            'max_length': "Образцы — не больше %(limit_value)d символов (сейчас %(show_value)d).",
         },
     )
     # Меню «Модель»: закрытый список, по умолчанию Lite. Пустое — Lite.
@@ -102,10 +129,13 @@ class GenerationForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Лимиты длины читаются при создании формы, а не при импорте:
-        # те же настройки проверяет check_gigachat_access
+        # те же настройки проверяет check_text_access. Фаза 2а.3: лимит
+        # `samples` проверяет и форма, и `check_text_access` (защита в
+        # обоих слоях: длина `samples` сверх лимита → 400 до вызова модели).
         for name, max_length in (
             ('topic', settings.GENERATION_MAX_TOPIC_LENGTH),
             ('business_info', settings.GENERATION_MAX_BUSINESS_INFO_LENGTH),
+            ('samples', settings.GENERATION_MAX_SAMPLES_LENGTH),
         ):
             field = self.fields[name]
             field.max_length = max_length

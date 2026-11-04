@@ -260,3 +260,6 @@ YANDEX_MAX_TOKENS = int(os.environ.get('YANDEX_MAX_TOKENS', '2000'))
 GENERATION_MAX_TOPIC_LENGTH = int(os.environ.get('GENERATION_MAX_TOPIC_LENGTH', '500'))
 GENERATION_MAX_TEXT_LENGTH = int(os.environ.get('GENERATION_MAX_TEXT_LENGTH', '6000'))
 GENERATION_MAX_BUSINESS_INFO_LENGTH = int(os.environ.get('GENERATION_MAX_BUSINESS_INFO_LENGTH', '500'))
+# Общий лимит объёма поля «Образцы ваших постов» (фаза 2а.3). Значение
+# по умолчанию — 20000 символов (10 постов × ~1500 знаков + запас)
+GENERATION_MAX_SAMPLES_LENGTH = int(os.environ.get('GENERATION_MAX_SAMPLES_LENGTH', '20000'))

@@ -36,6 +36,8 @@ MSG_DAILY_LIMIT_GIGACHAT_PRO = 'Сервис исчерпал дневной л�
 MSG_TOPIC_TOO_LONG = 'Слишком длинная тема: не больше {max_length} символов.'
 MSG_TEXT_TOO_LONG = 'Слишком длинный текст поста: не больше {max_length} символов.'
 MSG_BUSINESS_INFO_TOO_LONG = 'Слишком длинное описание «О бизнесе»: не больше {max_length} символов.'
+# Фаза 2а.3
+MSG_SAMPLES_TOO_LONG = 'Слишком длинное поле «Образцы постов»: не больше {max_length} символов.'
 MSG_MODEL_UNAVAILABLE = 'Выбранная модель недоступна.'
 
 # Короткие коды провайдеров — такие же, как в `GigaChatTokenUsage.PROVIDER_CHOICES`.
@@ -248,7 +250,8 @@ def check_provider_ceiling(provider_code):
 
 
 def check_text_access(request, provider_code=PROVIDER_GIGACHAT_LITE,
-                      topic=None, result_text=None, business_info=None):
+                      topic=None, result_text=None, business_info=None,
+                      samples=None):
     """
     Единая проверка перед каждым вызовом провайдера
 
@@ -256,6 +259,11 @@ def check_text_access(request, provider_code=PROVIDER_GIGACHAT_LITE,
     (один бюджет на все провайдеры — поле `gigachat_tokens_limit`),
     дневной потолок **фактического провайдера** (замечание 1 ревью
     безопасности) и длину пользовательского ввода.
+
+    Фаза 2а.3: `samples` — поле «Образцы постов» (строка одного
+    Textarea с разделителем `---`). Лимит проверяется двумя слоями:
+    форма (`MaxLengthValidator`) и здесь. Поле не доходит до модели
+    без расширения (`build_user_message` читает `data.get('samples')`).
 
     Returns:
         None, если вызов разрешён (токен кладётся в request.token),
@@ -280,6 +288,7 @@ def check_text_access(request, provider_code=PROVIDER_GIGACHAT_LITE,
         (topic, settings.GENERATION_MAX_TOPIC_LENGTH, MSG_TOPIC_TOO_LONG),
         (result_text, settings.GENERATION_MAX_TEXT_LENGTH, MSG_TEXT_TOO_LONG),
         (business_info, settings.GENERATION_MAX_BUSINESS_INFO_LENGTH, MSG_BUSINESS_INFO_TOO_LONG),
+        (samples, settings.GENERATION_MAX_SAMPLES_LENGTH, MSG_SAMPLES_TOO_LONG),
     ):
         if value and len(value) > max_length:
             return deny(request, message.format(max_length=max_length), 400, 'limit_exceeded_page')
