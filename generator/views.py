@@ -18,15 +18,16 @@ from datetime import datetime
 # =============================================================================
 from .forms import (
     GenerationForm,
-    LoginForm,
     MODEL_CHOICES,
     MODEL_DEFAULT,
     MODEL_GIGACHAT_LITE,
     MODEL_GIGACHAT_PRO,
     MODEL_YANDEXGPT,
     PLATFORM_CHOICES,
+    RegisterForm,
+    UserProfileForm,
 )
-from .models import Generation, UserProfile, GenerationTemplate, SupportTicket, Review, SupportChat
+from .models import AccessEvent, Generation, UserProfile, GenerationTemplate, SupportTicket, Review, SupportChat
 from .gigachat_api import (
     GigaChatError,
     MSG_IMAGE_FAILED,
@@ -43,6 +44,7 @@ from .yandex_image_api import generate_image as generate_image_yandex
 from .fastapi_client import generate_text_and_prompt, generate_image
 from .decorators import consume_generation, token_required
 from .access import (
+    ACCESS_WINDOW,
     MSG_MODEL_UNAVAILABLE,
     PROVIDER_GIGACHAT_LITE,
     PROVIDER_GIGACHAT_PRO,
@@ -50,8 +52,11 @@ from .access import (
     check_gigachat_access,
     check_provider_ceiling,
     check_text_access,
+    get_client_ip,
     get_session_token,
+    hash_ip,
     issue_demo_token,
+    issue_or_get_registered_token,
     start_token_session,
 )
 
@@ -171,69 +176,11 @@ def check_flask_api_status():
 # =============================================================================
 # AUTHENTICATION VIEWS
 # =============================================================================
-
-def quick_login(request, username):
-    """
-    Быстрый вход для тестовых пользователей (только для разработки)
-    
-    Автоматически создает тестовых пользователей при первом обращении:
-    - admin: суперпользователь для админ панели
-    - test_user_1: Анна Петрова (Москва, контент-маркетолог)
-    - test_user_2: Михаил Сидоров (СПб, SMM-менеджер)
-    
-    Args:
-        request: HTTP запрос
-        username (str): Имя пользователя (admin/test_user_1/test_user_2)
-    
-    Returns:
-        HttpResponse: Редирект на соответствующую страницу
-    """
-    if request.method == 'POST':
-        try:
-            # Проверяем, что это разрешенный тестовый пользователь
-            if username in ['admin', 'test_user_1', 'test_user_2']:
-                try:
-                    user = User.objects.get(username=username)
-                except User.DoesNotExist:
-                    # Автоматическое создание тестовых пользователей
-                    if username == 'admin':
-                        user = User.objects.create_superuser(
-                            username='admin',
-                            email='admin@example.com',
-                            password='admin123'
-                        )
-                    elif username == 'test_user_1':
-                        user = User.objects.create_user(
-                            username='test_user_1',
-                            email='test1@example.com',
-                            password='test123'
-                        )
-                        # Создаем профиль пользователя
-                        UserProfile.objects.get_or_create(user=user)
-                    elif username == 'test_user_2':
-                        user = User.objects.create_user(
-                            username='test_user_2',
-                            email='test2@example.com',
-                            password='test123'
-                        )
-                        # Создаем профиль пользователя
-                        UserProfile.objects.get_or_create(user=user)
-                
-                # Выполняем вход
-                login(request, user)
-                messages.success(request, f'Добро пожаловать, {user.username}!')
-                
-                # Редирект в зависимости от типа пользователя
-                if username == 'admin':
-                    return redirect('/admin/')  # Админ панель Django
-                else:
-                    return redirect('profile')  # Личный кабинет пользователя
-            else:
-                messages.error(request, 'Неверный пользователь для быстрого входа')
-        except Exception as e:
-            messages.error(request, f'Ошибка входа: {str(e)}')
-    
-    return redirect('login')
+#
+# Фаза 3: `quick_login` снят из URLconf и шаблонов. `agreement_view`
+# больше не используется (регистрация — на одной странице с галочкой
+# согласия в форме). Регистрация и вход — `register_view` / `login_view`
+# ниже, выход — только POST через `logout_view`.
 
 # =============================================================================
 # CONTENT GENERATION VIEWS
@@ -263,8 +210,20 @@ def generator_view(request):
     image_url = None
     image_error = None
     limit_reached = False
-    # «О бизнесе» из сессии подставляется в форму (сохраняется после успешной отправки)
-    form = GenerationForm(request.POST or None, initial={'business_info': request.session.get('business_info', '')})
+    # «О бизнесе» и образцы — у залогиненого берутся из профиля (фаза 3),
+    # у демо-посетителя — прежнее поведение, из сессии
+    if request.user.is_authenticated:
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        initial = {
+            'business_info': profile.business_info or '',
+            'samples': profile.samples or '',
+        }
+    else:
+        initial = {
+            'business_info': request.session.get('business_info', ''),
+            'samples': request.session.get('samples', ''),
+        }
+    form = GenerationForm(request.POST or None, initial=initial)
     generate_image_flag = request.POST.get('generate_image', 'off') == 'on'  # Чекбокс генерации изображения
     if request.method == 'POST':
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
@@ -438,11 +397,20 @@ def generator_view(request):
                 request.session['current_generation_id'] = gen.id
                 # Сохраняем form_data для перегенерации текста и генерации изображения
                 request.session['last_form_data'] = form_data
-                # «О бизнесе» — для следующего открытия генератора; пустое значение очищает
-                if form_data.get('business_info'):
-                    request.session['business_info'] = form_data['business_info']
-                else:
-                    request.session.pop('business_info', None)
+                # «О бизнесе» и образцы — у демо-посетителя сохраняются в сессии
+                # для следующего открытия генератора. У залогиненого эти поля
+                # правятся только явно через /profile/edit/ (фаза 3, раунд
+                # исправлений 1: автосохранение из формы генератора убрано,
+                # чтобы пустое поле не стирало ранее сохранённое в профиле).
+                if not request.user.is_authenticated:
+                    if form_data.get('business_info'):
+                        request.session['business_info'] = form_data['business_info']
+                    else:
+                        request.session.pop('business_info', None)
+                    if form_data.get('samples'):
+                        request.session['samples'] = form_data['samples']
+                    else:
+                        request.session.pop('samples', None)
                 if is_ajax:
                     # Обновляем информацию о токенах из сессии перед отправкой ответа
                     token = getattr(request, 'token', None)
@@ -1007,104 +975,119 @@ def regenerate_image(request):
         'error': 'Метод не поддерживается'
     })
 
-def register_disabled_view(request):
-    """
-    DEPRECATED: Регистрация отключена.
-    
-    Теперь используется система временных токенов для доступа.
-    Получите токен через Telegram Bot или используйте developer токен.
-    """
-    messages.info(
-        request,
-        'Регистрация больше не требуется! Получите токен доступа через Telegram Bot.'
-    )
-    return render(request, 'generator/token_required.html', {
-        'title': 'Регистрация отключена',
-        'message': 'Теперь вход через систему токенов',
-        'show_telegram_info': True
-    })
+def _register_attempts_count(ip_hash):
+    """Попытки регистрации с этого IP за скользящие 24 часа"""
+    from django.utils import timezone as _tz
+    return AccessEvent.objects.filter(
+        event_type=AccessEvent.REGISTER_ATTEMPT,
+        ip_hash=ip_hash,
+        created_at__gte=_tz.now() - ACCESS_WINDOW,
+    ).count()
 
 
-# DEPRECATED: Старая функция регистрации (сохранена для обратной совместимости)
 def register_view(request):
-    """Перенаправляет на новую систему токенов"""
-    return register_disabled_view(request)
+    """
+    Регистрация по логину и паролю (фаза 3)
 
-from django.views.decorators.csrf import csrf_exempt
+    POST: IP-лимит на регистрации, валидация `RegisterForm`, создание User
+    и `UserProfile(terms_accepted=True)`, активный токен REGISTERED через
+    `issue_or_get_registered_token`, вход через `django.contrib.auth.login`
+    (встроенная смена ключа сессии) и редирект на профиль. Каждая попытка
+    пишется в `AccessEvent` — успешные и неуспешные вместе (иначе слабый
+    пароль даёт обход лимита).
+    """
+    from django.utils import timezone as _tz
 
-def agreement_view(request):
-    reg_data = request.session.get('reg_data')
-    if not reg_data:
-        return redirect('register')
-    error = ''
+    # Залогиненный на /register/ — сразу на профиль, не спамим аккаунтами
+    if request.user.is_authenticated:
+        return redirect('profile')
+
     if request.method == 'POST':
-        if request.POST.get('accept_terms') == 'on':
-            # Преобразуем дату рождения в объект date
-            date_of_birth = reg_data.get('date_of_birth', None)
-            dob_obj = None
-            if date_of_birth:
-                try:
-                    dob_obj = datetime.strptime(date_of_birth, '%d.%m.%Y').date()
-                except Exception:
-                    error = 'Дата рождения указана в неверном формате.'
-                    return render(request, 'generator/user_agreement.html', {'error': error})
-            # Создаём пользователя и профиль
+        from django.utils import timezone as _tz2
+        AccessEvent.objects.filter(created_at__lt=_tz2.now() - ACCESS_WINDOW).delete()
+        ip_hash = hash_ip(get_client_ip(request))
+        if _register_attempts_count(ip_hash) >= settings.REGISTER_PER_IP_PER_DAY:
+            return render(request, 'generator/demo_limit.html', status=429)
+
+        form = RegisterForm(request.POST)
+        # Пишем ЛЮБУЮ попытку — успех и неуспех (защита от массовой
+        # регистрации слабыми паролями, замечание промпта)
+        AccessEvent.objects.create(
+            event_type=AccessEvent.REGISTER_ATTEMPT,
+            ip_hash=ip_hash,
+        )
+        if form.is_valid():
             user = User.objects.create_user(
-                username=reg_data['username'],
-                email=reg_data['email'],
-                password=reg_data['password'],
+                username=form.cleaned_data['username'],
+                password=form.cleaned_data['password1'],
             )
-            user_profile = UserProfile.objects.create(
-                user=user,
-                terms_accepted=True,
-            )
-            login(request, user)
-            request.session.pop('reg_data', None)
+            UserProfile.objects.create(user=user, terms_accepted=True)
+            # Токен REGISTERED создаётся заранее — чтобы middleware при
+            # следующем запросе уже нашёл его
+            issue_or_get_registered_token(user)
+            # Вход: `django.contrib.auth.login` сам меняет ключ сессии
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            # Чистим демо-токен в сессии, чтобы middleware брал токен
+            # REGISTERED через `issue_or_get_registered_token(user)`
+            for key in ('access_token', 'token_type', 'is_demo',
+                        'gigachat_tokens_limit', 'gigachat_tokens_used',
+                        'openai_tokens_limit', 'openai_tokens_used',
+                        'expires_at', 'daily_generations_left'):
+                request.session.pop(key, None)
             return redirect('profile')
-        else:
-            error = 'Необходимо принять пользовательское соглашение.'
-    return render(request, 'generator/user_agreement.html', {'error': error})
+    else:
+        form = RegisterForm()
 
-def login_disabled_view(request):
-    """
-    DEPRECATED: Вход через логин/пароль отключен.
-    
-    Теперь используется система временных токенов для доступа.
-    Получите токен через Telegram Bot или используйте developer токен.
-    """
-    messages.info(
-        request,
-        'Вход через логин/пароль отключен! Используйте токен-ссылку для доступа.'
-    )
-    return render(request, 'generator/token_required.html', {
-        'title': 'Вход через токены',
-        'message': 'Используйте токен-ссылку для доступа',
-        'show_telegram_info': True
-    })
+    return render(request, 'generator/register.html', {'form': form})
 
 
-# DEPRECATED: Старая функция входа (сохранена для обратной совместимости)
 def login_view(request):
-    """Перенаправляет на новую систему токенов"""
-    return login_disabled_view(request)
+    """
+    Вход по логину и паролю (фаза 3)
 
+    `django.contrib.auth.forms.AuthenticationForm` + `login(request, user)`
+    (встроенная смена ключа сессии). Демо-токен в сессии не трогается
+    middleware для залогиненного — `issue_or_get_registered_token(user)`
+    даёт токен пользователя при следующем запросе.
+    """
+    from django.contrib.auth.forms import AuthenticationForm
+
+    if request.user.is_authenticated:
+        return redirect('profile')
+
+    if request.method == 'POST':
+        form = AuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            # На всякий случай создаём/получаем токен пользователя
+            issue_or_get_registered_token(user)
+            # Чистим демо-токен в сессии
+            for key in ('access_token', 'token_type', 'is_demo',
+                        'gigachat_tokens_limit', 'gigachat_tokens_used',
+                        'openai_tokens_limit', 'openai_tokens_used',
+                        'expires_at', 'daily_generations_left'):
+                request.session.pop(key, None)
+            return redirect('profile')
+    else:
+        form = AuthenticationForm(request)
+
+    return render(request, 'generator/login.html', {'form': form})
+
+
+@require_POST
 def logout_view(request):
     """
-    Выход из системы
-    
-    Очищает сессию и перенаправляет на страницу получения токена.
+    Выход (только POST через `/logout/` с CSRF-токеном).
+
+    GET-запрос на этот маршрут отклоняется `require_POST` (405 Method Not
+    Allowed) — выход «кликом по ссылке» невозможен (ревью версии 3, п. 10).
     """
-    # Очищаем сессию
+    # django.contrib.auth.logout() сам вызывает request.session.flush().
+    # Вторая очистка не нужна (раунд исправлений 1 фазы 3).
     logout(request)
-    
-    # Очищаем данные токена из сессии
-    request.session.pop('access_token', None)
-    request.session.pop('token_type', None)
-    request.session.pop('is_demo', None)
-    request.session.pop('daily_generations_left', None)
-    
-    messages.success(request, 'Вы успешно вышли из системы.')
-    return redirect('token_required_page')
+    messages.success(request, 'Вы вышли из аккаунта.')
+    return redirect('landing')
 
 def landing_view(request):
     """
@@ -1122,24 +1105,27 @@ def home_view(request):
 
 @token_required
 def profile_view(request):
-    # Получаем информацию о токене
+    """
+    Профиль: токен текущего доступа + «О бизнесе» / образцы для залогиненого
+
+    Демо-посетителю — приглашение зарегистрироваться (ревью версии 1, п. 7):
+    своих данных у него нет, чужих показывать нельзя.
+    """
+    if not request.user.is_authenticated:
+        return _anon_sees_registration_offer(request)
+
     token = getattr(request, 'token', None)
     token_type = request.session.get('token_type', 'DEMO_FREE')
     token_type_display = token.get_token_type_display() if token else token_type
     is_demo = request.session.get('is_demo', False)
-    
-    # Получаем информацию о лимитах токенов
+
     gigachat_tokens_limit = request.session.get('gigachat_tokens_limit', -1)
     gigachat_tokens_used = request.session.get('gigachat_tokens_used', 0)
     openai_tokens_limit = request.session.get('openai_tokens_limit', 0)
     openai_tokens_used = request.session.get('openai_tokens_used', 0)
-    
-    # Для совместимости создаем фиктивный user_profile
-    # В системе токенов профиль пользователя не используется
-    user_profile = None
-    if request.user.is_authenticated:
-        user_profile, created = UserProfile.objects.get_or_create(user=request.user)
-    
+
+    user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
     return render(request, 'generator/profile.html', {
         'user_profile': user_profile,
         'token': token,
@@ -1149,35 +1135,71 @@ def profile_view(request):
         'gigachat_tokens_limit': gigachat_tokens_limit,
         'gigachat_tokens_used': gigachat_tokens_used,
         'openai_tokens_limit': openai_tokens_limit,
-        'openai_tokens_used': openai_tokens_used
+        'openai_tokens_used': openai_tokens_used,
     })
+
 
 @token_required
 def edit_profile_view(request):
-    # В системе токенов редактирование профиля недоступно
-    # Профиль привязан к User, а токены работают без пользователей
-    messages.info(request, 'Редактирование профиля недоступно в системе токенов. Профиль привязан к пользователю Django.')
-    return redirect('profile')
+    """
+    Редактирование профиля: `business_info` и `samples`
+
+    Только залогиненый: демо-посетителю — приглашение регистрации.
+    """
+    if not request.user.is_authenticated:
+        return _anon_sees_registration_offer(request)
+
+    user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    if request.method == 'POST':
+        profile_form = UserProfileForm(request.POST, instance=user_profile)
+        if profile_form.is_valid():
+            profile_form.save()
+            messages.success(request, 'Профиль обновлён.')
+            return redirect('profile')
+    else:
+        profile_form = UserProfileForm(instance=user_profile)
+    return render(request, 'generator/edit_profile.html', {
+        'profile_form': profile_form,
+    })
+
+def _anon_sees_registration_offer(request):
+    """
+    Демо-посетителю (не вошёл в аккаунт) показывается приглашение
+    зарегистрироваться вместо чужой истории/шаблонов. Это не 500, а
+    обычная страница — ревью версии 1, п. 7
+    """
+    return render(request, 'generator/token_required.html', {
+        'title': 'Зарегистрируйтесь, чтобы видеть историю',
+        'message': 'История постов и шаблоны настроек хранятся в аккаунте.',
+        'show_telegram_info': False,
+    }, status=200)
+
 
 @token_required
 def user_wall_view(request):
-    # Показываем все генерации (в системе токенов user может быть null)
-    # Можно фильтровать по токену, но в модели нет прямой связи
-    # Показываем все генерации без пользователя или все, если пользователь авторизован
-    if request.user.is_authenticated:
-        generations = Generation.objects.filter(user=request.user).order_by('-created_at')
-    else:
-        # Показываем генерации без пользователя (анонимные)
-        generations = Generation.objects.filter(user__isnull=True).order_by('-created_at')
+    """
+    История постов пользователя
+
+    Залогинен → свои посты (`user=request.user`). Анониму — приглашение
+    зарегистрироваться (ветка `user__isnull=True` снята: чужие посты не
+    раскрываются, ревью версии 1, п. 7).
+    """
+    if not request.user.is_authenticated:
+        return _anon_sees_registration_offer(request)
+    generations = Generation.objects.filter(user=request.user).order_by('-created_at')
     return render(request, 'generator/wall.html', {'generations': generations})
 
 @token_required
 def delete_generation_view(request, gen_id):
-    # В системе токенов можно удалять генерации без привязки к пользователю
-    if request.user.is_authenticated:
-        gen = get_object_or_404(Generation, id=gen_id, user=request.user)
-    else:
-        gen = get_object_or_404(Generation, id=gen_id, user__isnull=True)
+    """
+    Удаление поста — только своего (фильтр `user=request.user`).
+
+    Пользователь B не видит пост A: `get_object_or_404(..., user=request.user)`
+    отдаёт 404, не 403 — иначе существование чужого объекта разглашается.
+    """
+    if not request.user.is_authenticated:
+        return _anon_sees_registration_offer(request)
+    gen = get_object_or_404(Generation, id=gen_id, user=request.user)
     if request.method == 'POST':
         gen.delete()
         messages.success(request, 'Контент успешно удалён.')
@@ -1186,11 +1208,10 @@ def delete_generation_view(request, gen_id):
 
 @token_required
 def generation_detail_view(request, gen_id):
-    # В системе токенов можно просматривать генерации без привязки к пользователю
-    if request.user.is_authenticated:
-        gen = get_object_or_404(Generation, id=gen_id, user=request.user)
-    else:
-        gen = get_object_or_404(Generation, id=gen_id, user__isnull=True)
+    """Детали поста — только своего (фильтр `user=request.user`)"""
+    if not request.user.is_authenticated:
+        return _anon_sees_registration_offer(request)
+    gen = get_object_or_404(Generation, id=gen_id, user=request.user)
     return render(request, 'generator/generation_detail.html', {'gen': gen})
 
 # --- API для шаблонов генератора ---
@@ -1198,9 +1219,9 @@ def generation_detail_view(request, gen_id):
 @token_required
 @require_POST
 def save_template_view(request):
-    # Шаблоны требуют User, в системе токенов недоступны
+    # Шаблоны — только зарегистрированным: демо-посетителю — приглашение
     if not request.user.is_authenticated:
-        return JsonResponse({'success': False, 'error': 'Шаблоны доступны только для авторизованных пользователей'})
+        return JsonResponse({'success': False, 'error': 'Шаблоны доступны после регистрации'})
     
     import json
     data = json.loads(request.body.decode('utf-8'))
@@ -1321,17 +1342,24 @@ def set_default_template_view(request):
 def token_auth_view(request, token):
     """
     Обработка входа по временному токену
-    
+
     Проверяет валидность токена и создает анонимную сессию для пользователя.
     Поддерживает все типы токенов с лимитами GigaChat и OpenAI токенов.
-    
+
+    Фаза 3: при активном входе (`request.user.is_authenticated`) — редирект
+    на профиль без подстановки чужого токена (замечание ревью версии 3,
+    п. 1): вход через `/auth/token/<uuid>/` не должен подменять токен
+    зарегистрированного пользователя.
+
     Args:
         request: HTTP запрос
         token (UUID): Токен доступа из URL
-    
+
     Returns:
         HttpResponse: Редирект на dashboard или страницу ошибки
     """
+    if request.user.is_authenticated:
+        return redirect('profile')
     try:
         from .models import TemporaryAccessToken
         from django.utils import timezone

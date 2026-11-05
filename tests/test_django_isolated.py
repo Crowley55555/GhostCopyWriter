@@ -177,20 +177,24 @@ class IsolatedDjangoTests(TokenAuthMixin, TestCase):
         self.assertContains(response, 'Тема 2')
     
     def test_profile_management(self):
-        """Тест управления профилем"""
+        """Тест управления профилем
+
+        Фаза 3: `/profile/edit/` — рабочая форма (`business_info`, `samples`),
+        не редирект. Тест закрепляет новое поведение, старый assert
+        «Редактирование недоступно» снят (функция теперь работает).
+        """
         # Создаем профиль
-        profile = UserProfile.objects.create(user=self.user)
-        
+        UserProfile.objects.create(user=self.user)
+
         # Тест просмотра профиля
         response = self.client.get('/profile/')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.user.username)
-        
-        # Редактирование профиля отключено: возврат на профиль с пояснением
+
+        # Редактирование профиля — рендер формы, не редирект
         response = self.client.get('/profile/edit/')
-        self.assertRedirects(response, '/profile/')
-        notices = [str(m) for m in get_messages(response.wsgi_request)]
-        self.assertTrue(any('Редактирование профиля недоступно' in m for m in notices))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'О бизнесе')
     
     @patch('generator.views.generate_text')
     def test_form_validation(self, mock_text):

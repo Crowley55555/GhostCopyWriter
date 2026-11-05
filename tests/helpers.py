@@ -48,6 +48,28 @@ class TokenAuthMixin:
         return token, user
 
 
+def register_and_login(client, username='demo_owner_test',
+                       password='StrongDemoPwd_7Qx1', terms_accepted=True):
+    """
+    Регистрация + вход через `/register/` (фаза 3).
+
+    После POST'а на `/register/` при валидной форме view сам вызывает
+    `django.contrib.auth.login` (смена ключа сессии встроена). Возвращает
+    `(response, user)` — у `response` можно проверять `redirect_chain`,
+    статус и сессию.
+    """
+    data = {
+        'username': username,
+        'password1': password,
+        'password2': password,
+    }
+    if terms_accepted:
+        data['terms_accepted'] = 'on'
+    response = client.post('/register/', data)
+    user = User.objects.filter(username=username).first()
+    return response, user
+
+
 class FakeGigaChat:
     """
     Клиент GigaChat без сети: отвечает как настоящий и считает обращения

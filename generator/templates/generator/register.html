@@ -10,77 +10,43 @@
                     <h3 class="mb-0"><i class="bi bi-person-plus me-2"></i>Регистрация</h3>
                 </div>
                 <div class="card-body p-4">
+                    <div class="alert alert-info small mb-3">
+                        При регистрации сохраняется: логин, хэш пароля, «О бизнесе»,
+                        образцы постов, посты и технические данные для защиты от
+                        злоупотреблений. Email не требуется.
+                    </div>
                     <form method="post" autocomplete="off">
                         {% csrf_token %}
                         {{ form.non_field_errors }}
-                        {% for field in form %}
-                            {% if field.name != 'date_of_birth' %}
-                                <div class="mb-3">
-                                    {{ field.label_tag }}
+                        {% for field in form.visible_fields %}
+                            <div class="mb-3">
+                                {{ field.label_tag }}
+                                {% if field.name == 'terms_accepted' %}
+                                    <div class="form-check">
+                                        {{ field|add_class:'form-check-input' }}
+                                    </div>
+                                {% else %}
                                     {{ field|add_class:'form-control' }}
-                                    {% if field.errors %}
-                                        <div class="text-danger small">{{ field.errors|striptags }}</div>
-                                    {% endif %}
-                                </div>
-                            {% endif %}
+                                {% endif %}
+                                {% if field.help_text %}
+                                    <div class="form-text small">{{ field.help_text }}</div>
+                                {% endif %}
+                                {% if field.errors %}
+                                    <div class="text-danger small">{{ field.errors|striptags }}</div>
+                                {% endif %}
+                            </div>
                         {% endfor %}
-                        <div class="mb-3">
-                            {{ form.date_of_birth.label_tag }}
-                            {{ form.date_of_birth|add_class:'form-control'|add_class:'datepicker'|attr:'inputmode:numeric'|attr:'id:reg_date_of_birth' }}
-                            {% if form.date_of_birth.errors %}
-                                <div class="text-danger small">{{ form.date_of_birth.errors|striptags }}</div>
-                            {% endif %}
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100 py-2 mt-2 animate__animated animate__pulse"><i class="bi bi-person-plus me-2"></i>Зарегистрироваться</button>
+                        <button type="submit" class="btn btn-primary w-100 py-2 mt-2">
+                            <i class="bi bi-person-plus me-2"></i>Зарегистрироваться
+                        </button>
                     </form>
-                    
-                    <!-- Быстрый вход для разработки -->
-                    <div class="mt-4 p-3 bg-light rounded">
-                        <h6 class="text-muted mb-3"><i class="bi bi-tools me-2"></i>Быстрый вход (разработка)</h6>
-                        <div class="d-grid gap-2">
-                            <form method="post" action="{% url 'quick_login' 'admin' %}" class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-danger btn-sm w-100">
-                                    <i class="bi bi-shield-check me-2"></i>Admin → Панель управления
-                                </button>
-                            </form>
-                            <form method="post" action="{% url 'quick_login' 'test_user_1' %}" class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-primary btn-sm w-100">
-                                    <i class="bi bi-person me-2"></i>Test User 1 → Личный кабинет
-                                </button>
-                            </form>
-                            <form method="post" action="{% url 'quick_login' 'test_user_2' %}" class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-success btn-sm w-100">
-                                    <i class="bi bi-person me-2"></i>Test User 2 → Личный кабинет
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                    
-                    <p class="mt-3 text-center text-muted">Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a></p>
+
+                    <p class="mt-3 text-center text-muted">
+                        Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a>
+                    </p>
                 </div>
             </div>
         </div>
     </div>
 </div>
 {% endblock %}
-{% block extra_js %}
-  <script>
-  document.addEventListener('DOMContentLoaded', function() {
-      var input = document.getElementById('reg_date_of_birth');
-      if (!input) return;
-      input.setAttribute('maxlength', '10');
-      input.addEventListener('input', function(e) {
-          let value = this.value.replace(/[^0-9]/g, '');
-          if (value.length > 8) value = value.slice(0, 8);
-          let result = '';
-          if (value.length > 0) result += value.slice(0, 2);
-          if (value.length > 2) result += '.' + value.slice(2, 4);
-          if (value.length > 4) result += '.' + value.slice(4, 8);
-          this.value = result;
-      });
-  });
-  </script>
-{% endblock %} 

@@ -4,7 +4,9 @@
 - get_client_ip: единственное место, где определяется IP клиента;
 - start_token_session: сессия по токену (вход по ссылке и «Попробовать»);
 - issue_demo_token: выдача демо-токена с лимитом на IP за сутки;
-- check_gigachat_access: единая проверка перед каждым вызовом GigaChat.
+- issue_or_get_registered_token: один активный токен REGISTERED на пользователя;
+- check_gigachat_access / check_text_access: единая проверка перед LLM, с
+  дневным лимитом зарегистрированного (фаза 3).
 """
 
 import ipaddress
@@ -33,6 +35,8 @@ MSG_TOKEN_LIMIT = 'Лимит генераций для вашего досту�
 MSG_DAILY_LIMIT = 'Сервис исчерпал дневной лимит генераций. Попробуйте позже.'
 MSG_DAILY_LIMIT_YANDEX = 'Сервис исчерпал дневной лимит YandexGPT. Попробуйте позже.'
 MSG_DAILY_LIMIT_GIGACHAT_PRO = 'Сервис исчерпал дневной лимит GigaChat Pro. Попробуйте Lite или позже.'
+# Фаза 3: дневной лимит зарегистрированного пользователя
+MSG_DAILY_LIMIT_USER = 'Вы исчерпали дневной лимит генераций. Попробуйте позже.'
 MSG_TOPIC_TOO_LONG = 'Слишком длинная тема: не больше {max_length} символов.'
 MSG_TEXT_TOO_LONG = 'Слишком длинный текст поста: не больше {max_length} символов.'
 MSG_BUSINESS_INFO_TOO_LONG = 'Слишком длинное описание «О бизнесе»: не больше {max_length} символов.'
@@ -117,10 +121,12 @@ def start_token_session(request, access_token):
     # Для обратной совместимости
     request.session['daily_generations_left'] = -1
 
-    # Обновляем информацию о последнем использовании
+    # Обновляем информацию о последнем использовании.
+    # `update_fields` — чтобы параллельное списание токена другим
+    # экземпляром не затёрлось (замечание 2 ревью фазы 1, раунд 2)
     access_token.last_used = timezone.now()
     access_token.current_ip = request.META.get('REMOTE_ADDR')
-    access_token.save()
+    access_token.save(update_fields=['last_used', 'current_ip'])
 
     # Привязка к пользователю Django по telegram_user_id (для сохранения истории)
     if access_token.telegram_user_id and not request.user.is_authenticated:
@@ -182,6 +188,54 @@ def issue_demo_token(request):
             event_type=AccessEvent.DEMO_TOKEN,
             ip_hash=ip_hash,
             created_at=now,
+        )
+    return token
+
+
+def issue_or_get_registered_token(user):
+    """
+    Активный REGISTERED-токен пользователя: вернуть существующий или создать
+
+    Один активный токен на пользователя — за счёт `UniqueConstraint`
+    (`uniq_active_registered_token_per_user`, фаза 3). Параллельные вызовы
+    обёрнуты в `transaction.atomic`: второй получит `IntegrityError`, ловим
+    и читаем токен, который только что создал первый.
+
+    Параметры тарифа — из `tariffs.get_tariff_config('REGISTERED')`:
+    `gigachat_tokens_limit=-1` (без лимита токенов, потолок — дневной счёт),
+    `openai_tokens_limit=0`, срок — 10 лет.
+    """
+    from datetime import timedelta
+    from django.db import IntegrityError
+
+    from .tariffs import get_tariff_config
+
+    token = TemporaryAccessToken.objects.filter(
+        user=user,
+        token_type='REGISTERED',
+        is_active=True,
+    ).first()
+    if token is not None:
+        return token
+
+    tariff = get_tariff_config('REGISTERED') or {}
+    duration_days = tariff.get('duration_days') or (365 * 10)
+    expires_at = timezone.now() + timedelta(days=duration_days)
+    try:
+        with transaction.atomic():
+            token = TemporaryAccessToken.objects.create(
+                user=user,
+                token_type='REGISTERED',
+                gigachat_tokens_limit=tariff.get('gigachat_tokens', -1),
+                openai_tokens_limit=tariff.get('openai_tokens', 0),
+                expires_at=expires_at,
+            )
+    except IntegrityError:
+        # Гонка: другой запрос только что создал активный токен
+        token = TemporaryAccessToken.objects.get(
+            user=user,
+            token_type='REGISTERED',
+            is_active=True,
         )
     return token
 
@@ -278,6 +332,20 @@ def check_text_access(request, provider_code=PROVIDER_GIGACHAT_LITE,
     can_use, _ = token.can_use_gigachat()
     if not can_use:
         return deny(request, MSG_TOKEN_LIMIT, 429, 'limit_exceeded_page')
+
+    # Фаза 3: дневной лимит зарегистрированного пользователя.
+    # Считаем все строки учёта LLM (все провайдеры, все операции) за
+    # скользящие 24 часа. Проверка идёт до провайдерских потолков:
+    # зарегистрированный упирается в тот, что сработал первым.
+    # `RequestFactory` в тестах не ставит `user`, поэтому `getattr`
+    request_user = getattr(request, 'user', None)
+    if request_user is not None and request_user.is_authenticated:
+        user_calls = GigaChatTokenUsage.objects.filter(
+            user=request_user,
+            created_at__gte=_window_start(),
+        ).count()
+        if user_calls >= settings.REGISTERED_DAILY_CALL_LIMIT:
+            return deny(request, MSG_DAILY_LIMIT_USER, 429, 'limit_exceeded_page')
 
     ceiling = check_provider_ceiling(provider_code)
     if ceiling is not None:

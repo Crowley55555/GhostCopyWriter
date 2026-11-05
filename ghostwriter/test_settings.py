@@ -186,3 +186,8 @@ GENERATION_MAX_TEXT_LENGTH = 6000
 GENERATION_MAX_BUSINESS_INFO_LENGTH = 500
 # Фаза 2а.3: лимит объёма поля «Образцы ваших постов»
 GENERATION_MAX_SAMPLES_LENGTH = 20000
+# Фаза 3: дневной потолок LLM для зарегистрированного и лимит регистраций
+# с одного IP за сутки. Константы в test_settings — тесты переопределяют
+# их через `override_settings`
+REGISTERED_DAILY_CALL_LIMIT = 150
+REGISTER_PER_IP_PER_DAY = 5

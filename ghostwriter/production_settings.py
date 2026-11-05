@@ -263,3 +263,9 @@ GENERATION_MAX_BUSINESS_INFO_LENGTH = int(os.environ.get('GENERATION_MAX_BUSINES
 # Общий лимит объёма поля «Образцы ваших постов» (фаза 2а.3). Значение
 # по умолчанию — 20000 символов (10 постов × ~1500 знаков + запас)
 GENERATION_MAX_SAMPLES_LENGTH = int(os.environ.get('GENERATION_MAX_SAMPLES_LENGTH', '20000'))
+
+# Фаза 3: дневной потолок LLM для зарегистрированного пользователя и
+# лимит регистраций с одного IP за сутки (значения по умолчанию те же,
+# что в `settings.py`, обоснование — там же)
+REGISTERED_DAILY_CALL_LIMIT = int(os.environ.get('REGISTERED_DAILY_CALL_LIMIT', '150'))
+REGISTER_PER_IP_PER_DAY = int(os.environ.get('REGISTER_PER_IP_PER_DAY', '5'))

@@ -28,10 +28,9 @@ urlpatterns = [
     path('regenerate-image/', views.regenerate_image, name='regenerate_image'),
     path('generate-image-from-text/', views.generate_image_from_text, name='generate_image_from_text'),
     
-    # DEPRECATED: Старая система регистрации/входа (заглушки)
-    # Теперь используем систему токенов для доступа
-    path('register/', views.register_disabled_view, name='register'),
-    path('login/', views.login_disabled_view, name='login'),
+    # Фаза 3: регистрация по логину и паролю (без email), вход, выход (только POST)
+    path('register/', views.register_view, name='register'),
+    path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
     
     # User features (доступны через токены)
@@ -54,11 +53,8 @@ urlpatterns = [
     path('api/', include('generator.urls')),
 ]
 
-# Quick login (только для разработки)
-if settings.DEBUG:
-    urlpatterns += [
-        path('quick-login/<str:username>/', views.quick_login, name='quick_login'),
-    ]
+# Фаза 3: маршрут `quick_login` снят (пароли admin/test_user_1/test_user_2
+# в явном виде — не для публичного демо; в шаблонах ссылки удалены).
 
 # В режиме DEBUG:
 if settings.DEBUG:

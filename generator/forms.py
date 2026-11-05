@@ -1,6 +1,6 @@
 from django import forms
 from django.conf import settings
-from django.contrib.auth.forms import UserCreationForm, AuthenticationForm, UserChangeForm
+from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from django.contrib.auth.models import User
 from django.core.validators import MaxLengthValidator
 from .models import UserProfile
@@ -369,20 +369,79 @@ class GenerationForm(forms.Form):
         required=False
     )
 
-# DEPRECATED: RegisterForm удален - регистрация отключена, используется система токенов
+# Фаза 3: регистрация по логину и паролю
+class RegisterForm(UserCreationForm):
+    """
+    Регистрация по логину и паролю (без email)
 
-class LoginForm(AuthenticationForm):
-    username = forms.CharField(label="Имя пользователя или Email")
-    password = forms.CharField(widget=forms.PasswordInput, label="Пароль")
-    remember_me = forms.BooleanField(label="Запомнить меня", required=False, initial=False)
-    
+    Поля: `username`, `password1`, `password2`, `terms_accepted`. Пароль
+    проверяют встроенные валидаторы Django (`AUTH_PASSWORD_VALIDATORS`
+    в `settings.py`). Галочка согласия обязательна и хранится в
+    `UserProfile.terms_accepted` после регистрации.
+    """
+
+    terms_accepted = forms.BooleanField(
+        required=True,
+        label="Я согласен с условиями",
+        help_text=(
+            "Хранятся: логин, хэш пароля, «О бизнесе», образцы постов, "
+            "посты и технические данные для защиты от злоупотреблений."
+        ),
+        error_messages={
+            'required': "Нужно согласиться с условиями хранения данных.",
+        },
+    )
+
+    class Meta:
+        model = User
+        # Email осознанно не включаем (решение владельца, фаза 3):
+        # в демо адрес не нужен, уведомления не шлём
+        fields = ('username',)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Настраиваем сообщения об ошибках
-        self.error_messages = {
-            'invalid_login': 'Неверное имя пользователя или пароль. Проверьте правильность введенных данных.',
-            'inactive': 'Ваш аккаунт неактивен. Обратитесь к администратору.',
+        # Убираем email, даже если родитель его добавит в будущем
+        self.fields.pop('email', None)
+
+
+class UserProfileForm(forms.ModelForm):
+    """
+    Редактирование профиля зарегистрированного пользователя
+
+    Поля `business_info` и `samples` подставляются в форму генерации
+    (фаза 3). Длина проверяется в двух слоях: форма (`MaxLengthValidator`
+    из поля) и `check_text_access` перед вызовом модели.
+    """
+
+    class Meta:
+        model = UserProfile
+        fields = ('business_info', 'samples')
+        widgets = {
+            'business_info': forms.Textarea(attrs={'rows': 2}),
+            'samples': forms.Textarea(attrs={'rows': 4}),
+        }
+        labels = {
+            'business_info': 'О бизнесе',
+            'samples': 'Образцы ваших постов',
+        }
+        help_texts = {
+            'business_info': 'Что продаёте, кому, как говорите. Одной-двумя строками.',
+            'samples': (
+                '3–5 постов достаточно, до 10 — лучше. '
+                'Разделяйте посты строкой из трёх дефисов (---).'
+            ),
         }
 
-# DEPRECATED: UserProfileForm и UserEditForm удалены - редактирование профиля отключено
-# Регистрация и редактирование профиля не используются, система работает через токены
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Лимиты длины — из настроек (как в `GenerationForm`)
+        for name, max_length in (
+            ('business_info', settings.GENERATION_MAX_BUSINESS_INFO_LENGTH),
+            ('samples', settings.GENERATION_MAX_SAMPLES_LENGTH),
+        ):
+            field = self.fields[name]
+            field.max_length = max_length
+            field.validators.append(MaxLengthValidator(max_length))
+            field.widget.attrs['maxlength'] = str(max_length)
+
+

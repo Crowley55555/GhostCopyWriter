@@ -8,7 +8,7 @@
 from functools import wraps
 from django.shortcuts import redirect
 from django.utils import timezone
-from .access import MSG_TOKEN_LIMIT, deny, get_client_ip  # get_client_ip — единая функция IP
+from .access import MSG_TOKEN_LIMIT, deny, get_client_ip, issue_or_get_registered_token  # get_client_ip — единая функция IP
 from .models import TemporaryAccessToken
 
 
@@ -35,63 +35,64 @@ def consume_generation(view_func):
     
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        # Получаем токен из сессии
-        token_str = request.session.get('access_token')
-        
-        if not token_str:
-            # Нет токена - перенаправляем на страницу требования токена
-            return redirect('token_required_page')
-        
-        try:
-            # Получаем объект токена из базы данных
-            token = TemporaryAccessToken.objects.get(
-                token=token_str,
-                is_active=True
-            )
-            
-            # Проверяем срок действия
-            if token.is_expired():
-                # Токен истек - очищаем сессию и перенаправляем
+        # Фаза 3: для залогиненого всегда REGISTERED-токен
+        if request.user.is_authenticated:
+            token = issue_or_get_registered_token(request.user)
+        else:
+            token_str = request.session.get('access_token')
+            if not token_str:
+                return redirect('token_required_page')
+            try:
+                token = TemporaryAccessToken.objects.get(
+                    token=token_str,
+                    is_active=True,
+                )
+            except TemporaryAccessToken.DoesNotExist:
                 request.session.flush()
                 return redirect('invalid_token_page')
-            
-            # Проверяем лимиты токенов GigaChat и OpenAI
-            can_gc, gc_reason = token.can_use_gigachat()
-            can_oa, oa_reason = token.can_use_openai()
-            
-            # Если оба лимита исчерпаны - перенаправляем на страницу лимита (AJAX — JSON)
-            if not can_gc and not can_oa:
-                return deny(request, MSG_TOKEN_LIMIT, 429, 'limit_exceeded_page')
-            
-            # Редирект на openai_limit_exceeded только если OpenAI был в тарифе, но лимит исчерпан.
-            # Для скрытых токенов (openai_tokens_limit == 0) не редиректим — страница генератора с заглушенным OpenAI.
-            if token.openai_tokens_limit > 0 and not can_oa and can_gc:
-                return redirect('openai_limit_exceeded_page')
-            
-            # Сохраняем токен в request для использования в views
-            request.token = token
-            
-            # Получаем IP адрес пользователя
-            ip_address = get_client_ip(request)
-            
-            # Обновляем статистику использования (legacy)
-            token.consume_generation(ip_address=ip_address)
-            
-            # Обновляем данные в сессии
-            request.session['gigachat_tokens_limit'] = token.gigachat_tokens_limit
-            request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
-            request.session['openai_tokens_limit'] = token.openai_tokens_limit
-            request.session['openai_tokens_used'] = token.openai_tokens_used
-            request.session['total_used'] = token.total_used
-            
-        except TemporaryAccessToken.DoesNotExist:
-            # Токен не найден - очищаем сессию
-            request.session.flush()
-            return redirect('invalid_token_page')
-        
+
+        if token.is_expired():
+            if request.user.is_authenticated:
+                # У вошедшего истёкший токен выдаётся заново — без выхода
+                token.is_active = False
+                token.save(update_fields=['is_active'])
+                token = issue_or_get_registered_token(request.user)
+            else:
+                request.session.flush()
+                return redirect('invalid_token_page')
+
+        # Проверяем лимиты токенов GigaChat и OpenAI
+        can_gc, _ = token.can_use_gigachat()
+        can_oa, _ = token.can_use_openai()
+
+        # Если оба лимита исчерпаны - перенаправляем на страницу лимита (AJAX — JSON)
+        if not can_gc and not can_oa:
+            return deny(request, MSG_TOKEN_LIMIT, 429, 'limit_exceeded_page')
+
+        # Редирект на openai_limit_exceeded только если OpenAI был в тарифе, но лимит исчерпан.
+        # Для скрытых токенов (openai_tokens_limit == 0) не редиректим — страница генератора с заглушенным OpenAI.
+        if token.openai_tokens_limit > 0 and not can_oa and can_gc:
+            return redirect('openai_limit_exceeded_page')
+
+        # Сохраняем токен в request для использования в views
+        request.token = token
+
+        # Получаем IP адрес пользователя
+        ip_address = get_client_ip(request)
+
+        # Обновляем статистику использования (legacy)
+        token.consume_generation(ip_address=ip_address)
+
+        # Обновляем данные в сессии
+        request.session['gigachat_tokens_limit'] = token.gigachat_tokens_limit
+        request.session['gigachat_tokens_used'] = token.gigachat_tokens_used
+        request.session['openai_tokens_limit'] = token.openai_tokens_limit
+        request.session['openai_tokens_used'] = token.openai_tokens_used
+        request.session['total_used'] = token.total_used
+
         # Выполняем оригинальную функцию представления
         return view_func(request, *args, **kwargs)
-    
+
     return wrapper
 
 
@@ -117,32 +118,42 @@ def token_required(view_func):
     
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        # Получаем токен из сессии
+        # Фаза 3: залогиненому — всегда токен REGISTERED (без flush сессии
+        # при любой проблеме). Демо-посетителю — как было
+        if request.user.is_authenticated:
+            token = issue_or_get_registered_token(request.user)
+            if token.is_expired():
+                token.is_active = False
+                token.save(update_fields=['is_active'])
+                token = issue_or_get_registered_token(request.user)
+            request.token = token
+            return view_func(request, *args, **kwargs)
+
         token_str = request.session.get('access_token')
-        
+
         if not token_str:
             return redirect('token_required_page')
-        
+
         try:
             # Проверяем существование и валидность токена
             token = TemporaryAccessToken.objects.get(
                 token=token_str,
                 is_active=True
             )
-            
+
             # Проверяем срок действия
             if token.is_expired():
                 request.session.flush()
                 return redirect('invalid_token_page')
-            
+
             # Добавляем информацию о токене в request для использования в view
             request.token = token
-            
+
         except TemporaryAccessToken.DoesNotExist:
             request.session.flush()
             return redirect('invalid_token_page')
-        
+
         # Выполняем оригинальную функцию
         return view_func(request, *args, **kwargs)
-    
+
     return wrapper

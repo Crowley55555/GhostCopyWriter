@@ -75,6 +75,25 @@ TARIFFS = {
         'visible_in_bot': False,
         'description': 'Безлимит всего, бессрочно. Только для разработчиков.',
     },
+    # Фаза 3: регистрация по логину и паролю
+    # Токен выдаётся `issue_or_get_registered_token(user)`; дневной потолок
+    # приходит из `settings.REGISTERED_DAILY_CALL_LIMIT` (считается по строкам
+    # учёта LLM за скользящие 24 часа в `check_text_access`), тариф сам
+    # лимита токенов не несёт. OpenAI нет (исключён решением владельца).
+    'REGISTERED': {
+        'name': 'Зарегистрированный пользователь',
+        'price': 0,
+        'gigachat_tokens': -1,  # без лимита токенов, потолок — дневные вызовы
+        'openai_tokens': 0,     # OpenAI недоступен
+        'duration_days': 365 * 10,  # долгоживущий; истекает через 10 лет
+        'is_subscription': False,
+        'visible_in_bot': False,
+        'is_hidden': True,
+        'description': (
+            'Логин/пароль. Без лимита токенов GigaChat; дневной потолок '
+            'берётся из настройки REGISTERED_DAILY_CALL_LIMIT.'
+        ),
+    },
 }
 
 

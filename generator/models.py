@@ -15,19 +15,29 @@ Django модели для системы генерации контента
 import uuid
 from django.contrib.auth.models import User
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
 class UserProfile(models.Model):
     """
-    Расширенный профиль пользователя (legacy, используется только для совместимости)
-    
-    ВАЖНО: Регистрация пользователей отключена, используется система токенов.
-    Эта модель оставлена только для обратной совместимости с существующими данными.
+    Расширенный профиль пользователя
+
+    Фаза 3: регистрация по логину и паролю — добавлены поля `business_info`
+    и `samples` (переехали из сессии демо-посетителя, образцы — из фазы 2а.3).
+    Галочка согласия (`terms_accepted`) обязательна при регистрации; `avatar`
+    оставлен из прежней модели — не используется в демо, но ничего не ломает.
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, verbose_name="Аватар")
     terms_accepted = models.BooleanField(default=False, verbose_name="Принял условия")
+    # Фаза 3: «О бизнесе» — свободный текст (одна-две строки о бизнесе владельца).
+    # Длина проверяется в формах и в `check_text_access` по `GENERATION_MAX_BUSINESS_INFO_LENGTH`
+    business_info = models.TextField(blank=True, default='', verbose_name="О бизнесе")
+    # Фаза 3: образцы постов владельца, одной строкой с разделителем `---`
+    # (тот же формат, что в сессии демо-посетителя из фазы 2а.3). Длина
+    # проверяется в формах и в `check_text_access` по `GENERATION_MAX_SAMPLES_LENGTH`
+    samples = models.TextField(blank=True, default='', verbose_name="Образцы постов")
 
     class Meta:
         verbose_name = "Профиль пользователя"
@@ -127,6 +137,9 @@ class TemporaryAccessToken(models.Model):
         ('HIDDEN_14D', 'Скрытый 14 дней'),
         ('HIDDEN_30D', 'Скрытый 30 дней'),
         ('DEVELOPER', 'Разработчик'),
+        # Фаза 3: зарегистрированный пользователь. Один активный токен на User
+        # обеспечивается UniqueConstraint ниже и `issue_or_get_registered_token`
+        ('REGISTERED', 'Зарегистрированный'),
     )
     
     # Уникальный токен (UUID) - без связи с User для анонимного доступа
@@ -212,6 +225,19 @@ class TemporaryAccessToken(models.Model):
         verbose_name="Telegram User ID",
         help_text="ID пользователя в Telegram (для защиты от мультиаккаунтов)"
     )
+
+    # Фаза 3: зарегистрированный пользователь (логин/пароль). Один активный
+    # токен типа REGISTERED на пользователя обеспечивается UniqueConstraint
+    # в Meta ниже; `issue_or_get_registered_token(user)` возвращает его
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='access_tokens',
+        verbose_name="Пользователь",
+        help_text="Для токена типа REGISTERED — Django-пользователь",
+    )
     
     # Сессионные данные (технические, не ПДн)
     last_used = models.DateTimeField(
@@ -236,6 +262,18 @@ class TemporaryAccessToken(models.Model):
             models.Index(fields=['is_active', 'expires_at']),
             models.Index(fields=['telegram_user_id', 'token_type', 'is_active']),
             models.Index(fields=['telegram_user_id', 'is_active']),
+            # Фаза 3: быстрый поиск активного токена REGISTERED по пользователю
+            models.Index(fields=['user', 'token_type', 'is_active']),
+        ]
+        constraints = [
+            # Фаза 3: один активный токен REGISTERED на пользователя.
+            # Частичный индекс: NULL-user не попадает; неактивные дубликаты
+            # разрешены (история деактивированных токенов не трогаем)
+            models.UniqueConstraint(
+                fields=['user'],
+                condition=Q(token_type='REGISTERED', is_active=True),
+                name='uniq_active_registered_token_per_user',
+            ),
         ]
     
     def __str__(self):
@@ -633,8 +671,12 @@ class AccessEvent(models.Model):
     Записи старше суток не нужны и удаляются при выдаче (generator.access).
     """
     DEMO_TOKEN = 'DEMO_TOKEN'
+    # Фаза 3: попытка регистрации (успех и неуспех считаются вместе —
+    # иначе слабые пароли дают обход лимита регистраций по IP)
+    REGISTER_ATTEMPT = 'REGISTER_ATTEMPT'
     EVENT_TYPES = (
         (DEMO_TOKEN, 'Выдача демо-токена'),
+        (REGISTER_ATTEMPT, 'Попытка регистрации'),
     )
 
     event_type = models.CharField(
